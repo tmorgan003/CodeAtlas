@@ -1,0 +1,522 @@
+:root {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --inset: #f0f1f4;
+  --border: #dcdfe4;
+  --text: #1a1d24;
+  --muted: #6b7280;
+  --accent-text: #152547;
+  --accent-surface: #152547;
+  --ok: #147c55;
+  --warn: #936409;
+  --err: #bc3737;
+  --sev-high: #a7530e;
+  --info: #2b6cb0;
+  --badge-neutral-bg: #eceef1;
+  --badge-warn-bg: #fdf1da;
+  --badge-ok-bg: #e2f6ec;
+  --badge-err-bg: #fbe4e4;
+  --badge-sev-high-bg: #fdead9;
+  --badge-info-bg: #e3edf8;
+  --badge-accent-bg: #e9edf7;
+  --badge-accent-fg: #152547;
+  --chip-bg: #eef1f7;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 130ms;
+  --dur-base: 220ms;
+  --dur-slow: 380ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0f1115;
+    --panel: #171a21;
+    --inset: #0f1115;
+    --border: #2a2e37;
+    --text: #e6e8ec;
+    --muted: #9aa1ac;
+    --accent-text: #5c83d6;
+    --accent-surface: #3762be;
+    --ok: #37c48f;
+    --warn: #e0a83c;
+    --err: #e16060;
+    --sev-high: #e8863c;
+    --info: #5aa9e6;
+    --badge-neutral-bg: #2a2e37;
+    --badge-warn-bg: #3a3416;
+    --badge-ok-bg: #123a2c;
+    --badge-err-bg: #3a1616;
+    --badge-sev-high-bg: #3a2414;
+    --badge-info-bg: #16324a;
+    --badge-accent-bg: #192a4d;
+    --badge-accent-fg: #6790e9;
+    --chip-bg: #1c2230;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --panel: #171a21;
+  --inset: #0f1115;
+  --border: #2a2e37;
+  --text: #e6e8ec;
+  --muted: #9aa1ac;
+  --accent-text: #5c83d6;
+  --accent-surface: #3762be;
+  --ok: #37c48f;
+  --warn: #e0a83c;
+  --err: #e16060;
+  --sev-high: #e8863c;
+  --info: #5aa9e6;
+  --badge-neutral-bg: #2a2e37;
+  --badge-warn-bg: #3a3416;
+  --badge-ok-bg: #123a2c;
+  --badge-err-bg: #3a1616;
+  --badge-sev-high-bg: #3a2414;
+  --badge-info-bg: #16324a;
+  --badge-accent-bg: #192a4d;
+  --badge-accent-fg: #6790e9;
+  --chip-bg: #1c2230;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --inset: #f0f1f4;
+  --border: #dcdfe4;
+  --text: #1a1d24;
+  --muted: #6b7280;
+  --accent-text: #152547;
+  --accent-surface: #152547;
+  --ok: #147c55;
+  --warn: #936409;
+  --err: #bc3737;
+  --sev-high: #a7530e;
+  --info: #2b6cb0;
+  --badge-neutral-bg: #eceef1;
+  --badge-warn-bg: #fdf1da;
+  --badge-ok-bg: #e2f6ec;
+  --badge-err-bg: #fbe4e4;
+  --badge-sev-high-bg: #fdead9;
+  --badge-info-bg: #e3edf8;
+  --badge-accent-bg: #e9edf7;
+  --badge-accent-fg: #152547;
+  --chip-bg: #eef1f7;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  transition: background-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+}
+
+.panel, .modal, .modal-overlay, .browse-current-path, header, table, th, td,
+.status-badge, .tag-badge, .wiki-view code, .wiki-view pre, .scan-progress-log li {
+  transition: background-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+}
+
+header {
+  padding: 1.5rem 2rem 0.5rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+header h1 { margin: 0; font-size: 2.15rem; font-weight: 800; letter-spacing: -0.01em; display: flex; align-items: center; gap: 0.5rem; }
+header h1 .brand-accent { color: var(--accent-text); }
+.brand-icon { color: var(--accent-text); flex-shrink: 0; }
+.subtitle { color: var(--muted); margin: 0.25rem 0 0; }
+
+.theme-toggle {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+main {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: 1.5rem;
+  padding: 1.5rem 2rem 3rem;
+  align-items: start;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  min-width: 0;
+}
+
+#list-panel, #detail-panel { grid-column: 2; }
+#form-panel { grid-row: 1 / span 2; }
+#list-panel, #detail-panel { view-transition-name: main-panel; }
+#wiki-view { view-transition-name: wiki-content; }
+
+#form-details summary {
+  cursor: pointer;
+}
+#form-details summary h2 { display: inline; margin: 0; }
+#form-details form { margin-top: 1rem; }
+
+form label {
+  display: block;
+  margin-bottom: 0.85rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* Rhythm: the identity/description fields above read as one cluster; a
+   deliberately wider gap marks the shift into operational settings
+   (scan mode, scheduling, notifications), and again into the submit action —
+   so the form isn't one undifferentiated stack of equal-weight fields. */
+.checkbox-label { margin-top: 1.4rem; }
+form > button[type="submit"] { margin-top: 0.5rem; }
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+input, select, textarea {
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background-color var(--dur-base) var(--ease-out);
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent-text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-text) 22%, transparent);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-radius: 6px;
+  padding: 0.3rem 0.4rem;
+  margin-left: -0.4rem;
+  margin-right: -0.4rem;
+  transition: background-color var(--dur-base) var(--ease-out);
+}
+.checkbox-label input { width: auto; margin-top: 0.15rem; accent-color: var(--accent-surface); }
+/* Deep scan is a materially different, more consequential choice (external
+   LLM call, slower, costs Claude usage) — tint the row so checking it reads
+   as a real state change, not just another checkbox. */
+.checkbox-label:has(input:checked) { background: var(--badge-accent-bg); }
+
+select[name="environment"] { transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+/* Preview the same stakes-tier color the Environment badge will show after
+   submit (env-production/env-staging in the app table and detail panel) —
+   what you pick here is what you'll see there. */
+select[name="environment"].env-select-production { border-color: var(--sev-high); color: var(--sev-high); }
+select[name="environment"].env-select-staging { border-color: var(--info); color: var(--info); }
+
+.path-input-row {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+.path-input-row input { margin-top: 0; }
+.path-input-row button { padding: 0.5rem 0.8rem; font-size: 0.85rem; white-space: nowrap; }
+
+button {
+  background: var(--accent-surface);
+  color: #fff;
+  border: none;
+  padding: 0.55rem 1.1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: filter var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+}
+
+button.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+button:not(:disabled):hover { filter: brightness(1.08); }
+button.secondary:not(:disabled):hover { background: var(--inset); filter: none; }
+button:not(:disabled):active { transform: scale(0.97); }
+
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.form-status { color: var(--muted); font-size: 0.85rem; min-height: 1.2em; transition: color var(--dur-base) var(--ease-out); }
+.form-status.success { color: var(--ok); }
+.form-status.error { color: var(--err); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
+
+/* Prevents a wide table (long paths, many tags, a long Issues summary
+   column) from forcing the whole page to scroll horizontally on a narrow
+   viewport — the table scrolls in place instead. */
+.table-scroll { overflow-x: auto; }
+.table-scroll table { min-width: max-content; }
+
+#app-table tbody tr { animation-fill-mode: both; }
+#app-table tbody tr.row-enter { animation: rowEnter var(--dur-base) var(--ease-out); }
+
+@keyframes rowEnter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.empty-state { color: var(--muted); font-size: 0.9rem; }
+
+.filter-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.filter-bar input, .filter-bar select {
+  margin-top: 0;
+  width: auto;
+  min-width: 140px;
+}
+
+.tag-badge {
+  display: inline-block;
+  background: var(--chip-bg);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.72rem;
+  margin: 0 0.25rem 0.25rem 0;
+}
+
+.status-badge, .severity-badge, .env-badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.status-not-started { background: var(--badge-neutral-bg); color: var(--muted); }
+.status-scanning { background: var(--badge-warn-bg); color: var(--warn); animation: scanPulse 1.6s var(--ease-out) infinite; }
+.status-done { background: var(--badge-ok-bg); color: var(--ok); }
+.status-failed { background: var(--badge-err-bg); color: var(--err); }
+
+/* Severity: an intensity ramp so a scan's findings are triage-able at a
+   glance — Critical shares the alarm red used for a failed scan; High sits
+   between alarm and caution; Medium reuses the same amber as an in-progress
+   scan; Low is calm/informational rather than another shade of gray so it
+   doesn't read as "no data". */
+.severity-critical { background: var(--badge-err-bg); color: var(--err); }
+.severity-high { background: var(--badge-sev-high-bg); color: var(--sev-high); }
+.severity-medium { background: var(--badge-warn-bg); color: var(--warn); }
+.severity-low { background: var(--badge-info-bg); color: var(--info); }
+
+/* Environment: color signals blast radius, not decoration. Production
+   shares High severity's "elevated stakes" orange; Staging is calm/blue;
+   Internal carries no special color — lowest stakes earns no accent. */
+.env-production { background: var(--badge-sev-high-bg); color: var(--sev-high); }
+.env-staging { background: var(--badge-info-bg); color: var(--info); }
+.env-internal { background: var(--badge-neutral-bg); color: var(--muted); }
+
+.override-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  vertical-align: middle;
+  background: var(--badge-accent-bg);
+  color: var(--badge-accent-fg);
+}
+
+.badge-flash { animation: badgeFlash 900ms var(--ease-out); }
+
+@keyframes scanPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes badgeFlash {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-text) 55%, transparent); }
+  100% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent-text) 0%, transparent); }
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--accent-text);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+dl { display: grid; grid-template-columns: 140px 1fr; gap: 0.4rem 1rem; font-size: 0.9rem; }
+dt { color: var(--muted); }
+dd { margin: 0; word-break: break-word; }
+
+@media (max-width: 480px) {
+  dl { grid-template-columns: 1fr; gap: 0; }
+  dt { margin-top: 0.7rem; }
+  dt:first-child { margin-top: 0; }
+}
+
+.wiki-nav { margin: 1rem 0 0.5rem; font-size: 0.85rem; }
+.wiki-nav span { color: var(--muted); margin-right: 0.5rem; }
+#wiki-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1.1rem; }
+.wiki-nav-group { display: flex; flex-wrap: wrap; }
+#wiki-links button { margin: 0 0.35rem 0.35rem 0; font-size: 0.8rem; padding: 0.3rem 0.6rem; }
+
+.wiki-search-form { display: flex; gap: 0.4rem; margin-top: 0.5rem; max-width: 360px; }
+.wiki-search-form input { margin-top: 0; }
+.wiki-search-form button { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+
+.search-result { margin-bottom: 0.9rem; }
+.search-result-file { color: var(--accent-text); cursor: pointer; font-weight: 600; }
+.search-snippet { color: var(--muted); font-size: 0.85rem; margin: 0.15rem 0 0 1rem; }
+.search-snippet mark { background: var(--badge-warn-bg); color: inherit; }
+
+.scan-progress-log {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+}
+.scan-progress-log li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.scan-progress-log li:last-child { color: var(--text); }
+.scan-progress-log li.log-enter { animation: logEnter var(--dur-base) var(--ease-out) both; }
+
+@keyframes logEnter {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.wiki-view {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+.wiki-view h1, .wiki-view h2, .wiki-view h3 { margin-top: 1.4em; }
+.wiki-view code { background: var(--inset); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.85em; }
+.wiki-view pre { background: var(--inset); padding: 0.8rem; border-radius: 6px; overflow-x: auto; }
+.wiki-view table { margin: 0.75rem 0; }
+.history-issues-flag { color: var(--err); font-weight: 700; }
+.wiki-view a { color: var(--accent-text); cursor: pointer; }
+.wiki-view ul { padding-left: 1.3rem; }
+.wiki-view svg line { transition: stroke var(--dur-fast) var(--ease-out); }
+.wiki-view svg circle { transition: filter var(--dur-fast) var(--ease-out); }
+.wiki-view svg g:hover circle { filter: brightness(1.2); }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-overlay[hidden] { display: none; }
+.modal-overlay:not([hidden]) { animation: overlayIn var(--dur-base) var(--ease-out); }
+.modal-overlay.closing { animation: overlayOut var(--dur-fast) var(--ease-out) forwards; }
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  width: min(480px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-overlay:not([hidden]) .modal { animation: modalIn var(--dur-base) var(--ease-out) both; }
+.modal-overlay.closing .modal { animation: modalOut var(--dur-fast) var(--ease-out) forwards; }
+
+@keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes overlayOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes modalOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+.modal h3 { margin: 0 0 0.5rem; }
+.browse-current-path {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  word-break: break-all;
+  margin: 0 0 0.75rem;
+}
+.browse-list-wrap { overflow-y: auto; flex: 1; border: 1px solid var(--border); border-radius: 6px; }
+.browse-list { list-style: none; margin: 0; padding: 0.25rem; }
+.browse-item {
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+.browse-item { transition: background-color var(--dur-fast) var(--ease-out); }
+.browse-item:hover { background: var(--inset); }
+.browse-up { color: var(--muted); }
+.browse-empty { color: var(--muted); font-size: 0.85rem; padding: 0.45rem 0.6rem; cursor: default; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+
+@media (max-width: 800px) {
+  main { grid-template-columns: 1fr; }
+  #form-panel { grid-row: auto; }
+  #list-panel, #detail-panel { grid-column: 1; }
+  .row { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

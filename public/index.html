@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CodeAtlas</title>
+<link rel="stylesheet" href="styles.css" />
+<script>
+  (function () {
+    var stored = localStorage.getItem('codeatlas-theme');
+    if (stored === 'light' || stored === 'dark') document.documentElement.setAttribute('data-theme', stored);
+  })();
+</script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>
+        <svg class="brand-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 7.5 L6.2 16.3 M12 7.5 L17.8 16.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <circle cx="12" cy="5" r="2.6" fill="currentColor"/>
+          <circle cx="5" cy="18" r="2.6" fill="currentColor"/>
+          <circle cx="19" cy="18" r="2.6" fill="currentColor"/>
+        </svg>
+        Code<span class="brand-accent">Atlas</span>
+      </h1>
+      <p class="subtitle">Submit an app for static-analysis documentation scanning.</p>
+    </div>
+    <button type="button" id="theme-toggle" class="theme-toggle">Theme</button>
+  </header>
+
+  <main>
+    <section class="panel" id="form-panel">
+      <details id="form-details">
+        <summary><h2>Add an Application</h2></summary>
+        <form id="app-form">
+        <label>Name
+          <input type="text" name="name" required placeholder="e.g. Billing Service" />
+        </label>
+        <label>Path or Repo Link
+          <div class="path-input-row">
+            <input type="text" name="pathOrRepo" id="path-input" required placeholder="C:\path\to\app  or  https://github.com/org/repo.git" />
+            <button type="button" class="secondary" id="browse-btn">Browse…</button>
+          </div>
+        </label>
+        <label>Purpose
+          <textarea name="purpose" rows="2" placeholder="What does this app do?"></textarea>
+        </label>
+        <div class="row">
+          <label>Owner / Team
+            <input type="text" name="owner" placeholder="e.g. Platform Team" />
+          </label>
+          <label>Environment
+            <select name="environment">
+              <option value="">Select...</option>
+              <option>Production</option>
+              <option>Staging</option>
+              <option>Internal</option>
+            </select>
+          </label>
+        </div>
+        <label>Tech Stack
+          <input type="text" name="techStack" placeholder="e.g. Node.js, Express, Postgres" />
+        </label>
+        <label>Tags
+          <input type="text" name="tags" placeholder="comma-separated, e.g. backend, payments" />
+        </label>
+        <label>Notes
+          <textarea name="notes" rows="2" placeholder="Anything else worth knowing"></textarea>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" name="scanMode" value="deep" />
+          Deep scan (LLM-assisted via local Claude CLI — richer prose, slower, uses your Claude usage)
+        </label>
+        <div class="row">
+          <label>Auto-rescan
+            <select name="scheduleMinutes">
+              <option value="0">Off</option>
+              <option value="60">Hourly</option>
+              <option value="1440">Daily</option>
+              <option value="10080">Weekly</option>
+            </select>
+          </label>
+          <label>Notify Webhook URL
+            <input type="text" name="notifyWebhookUrl" placeholder="Slack incoming webhook or generic URL (optional)" />
+          </label>
+        </div>
+        <button type="submit">Add Application</button>
+        <p class="form-status" id="form-status"></p>
+        </form>
+      </details>
+    </section>
+
+    <section class="panel" id="list-panel">
+      <h2>Applications</h2>
+      <div class="filter-bar">
+        <input type="search" id="filter-search" placeholder="Search name/tags..." />
+        <select id="filter-environment"><option value="">All environments</option></select>
+        <select id="filter-owner"><option value="">All owners</option></select>
+      </div>
+      <div class="table-scroll">
+        <table id="app-table">
+          <thead>
+            <tr><th>Name</th><th>Environment</th><th>Tags</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="app-table-body"></tbody>
+        </table>
+      </div>
+      <p id="empty-state" class="empty-state">No applications added yet.</p>
+    </section>
+
+    <section class="panel" id="detail-panel" hidden>
+      <button id="close-detail" class="link-button">&larr; Back to list</button>
+      <h2 id="detail-name"></h2>
+      <dl id="detail-meta"></dl>
+      <div id="wiki-nav" class="wiki-nav" hidden>
+        <span>Wiki:</span>
+        <div id="wiki-links"></div>
+        <form id="wiki-search-form" class="wiki-search-form">
+          <input type="search" id="wiki-search-input" placeholder="Search this app's wiki..." />
+          <button type="submit" class="secondary">Search</button>
+        </form>
+      </div>
+      <article id="wiki-view" class="wiki-view"></article>
+    </section>
+  </main>
+
+  <div id="browse-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <h3>Choose a Folder</h3>
+      <p id="browse-current-path" class="browse-current-path"></p>
+      <div class="browse-list-wrap">
+        <ul id="browse-list" class="browse-list"></ul>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="browse-cancel">Cancel</button>
+        <button type="button" id="browse-select">Select This Folder</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

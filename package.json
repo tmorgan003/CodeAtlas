@@ -1,0 +1,21 @@
+{
+  "name": "codeatlas",
+  "version": "1.0.0",
+  "description": "Static-analysis codebase scanner that generates a /wiki of documentation for a target application, with a frontend for submitting apps to scan.",
+  "main": "server.js",
+  "bin": {
+    "codeatlas": "./cli.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "scan": "node cli.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "typescript": "^5.9.3"
+  }
+}
