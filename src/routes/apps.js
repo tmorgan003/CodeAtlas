@@ -5,6 +5,7 @@ const db = require('../store/db');
 const history = require('../scanner/history');
 const triage = require('../scanner/triage');
 const dictionaryOverrides = require('../scanner/dictionaryOverrides');
+const owners = require('../store/owners');
 const envVarOverrides = require('../scanner/envVarOverrides');
 const graph = require('../scanner/graph');
 const { searchWiki } = require('../scanner/wikiSearch');
@@ -107,6 +108,7 @@ router.post('/bulk', (req, res) => {
       }
       if (!pathOrRepo) throw new Error('missing path/repo');
       if (!name) name = deriveNameFromPath(pathOrRepo);
+      if (owner && !owners.isValid(owner)) throw new Error(`unknown owner "${owner}" — add it via Manage Owners first`);
       created.push(db.create({ name, pathOrRepo, environment, owner, tags }));
     } catch (err) {
       errors.push({ line: i + 1, text: line, error: String((err && err.message) || err) });
@@ -214,6 +216,9 @@ router.post('/', (req, res) => {
   if (!name || !pathOrRepo) {
     return res.status(400).json({ error: 'name and pathOrRepo are required' });
   }
+  if (owner && !owners.isValid(owner)) {
+    return res.status(400).json({ error: `Unknown owner "${owner}" — add it via Manage Owners first, or leave this blank.` });
+  }
   const entry = db.create({ name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled });
   res.status(201).json(entry);
 });
@@ -228,7 +233,12 @@ router.patch('/:id', (req, res) => {
   } = req.body || {};
   const patch = {};
   if (purpose !== undefined) patch.purpose = purpose;
-  if (owner !== undefined) patch.owner = owner;
+  if (owner !== undefined) {
+    if (owner && !owners.isValid(owner)) {
+      return res.status(400).json({ error: `Unknown owner "${owner}" — add it via Manage Owners first, or leave this blank.` });
+    }
+    patch.owner = owner;
+  }
   if (environment !== undefined) patch.environment = environment;
   if (techStack !== undefined) patch.techStack = techStack;
   if (notes !== undefined) patch.notes = notes;

@@ -897,6 +897,65 @@ bulkSubmitBtn.addEventListener('click', async () => {
   }
 });
 
+// ---- Manage owners (feature 19: Owner/Team validated against a saved list) ----
+
+const ownerOptionsList = document.getElementById('owner-options');
+const ownersListEl = document.getElementById('owners-list');
+const ownerNewInput = document.getElementById('owner-new-input');
+const ownerAddBtn = document.getElementById('owner-add-btn');
+const ownerManageStatus = document.getElementById('owner-manage-status');
+
+function renderOwners(ownerNames) {
+  ownerOptionsList.innerHTML = ownerNames.map((o) => `<option value="${o}"></option>`).join('');
+  ownersListEl.innerHTML = '';
+  for (const name of ownerNames) {
+    const chip = document.createElement('span');
+    chip.className = 'tag-badge owner-chip';
+    const label = document.createElement('span');
+    label.textContent = name;
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'owner-remove-btn';
+    removeBtn.textContent = '×';
+    removeBtn.title = `Remove ${name}`;
+    removeBtn.addEventListener('click', async () => {
+      const updated = await fetch(`/api/owners/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) => r.json());
+      renderOwners(updated);
+    });
+    chip.append(label, removeBtn);
+    ownersListEl.appendChild(chip);
+  }
+}
+
+async function loadOwners() {
+  const list = await fetch('/api/owners').then((r) => r.json());
+  renderOwners(list);
+}
+
+ownerAddBtn.addEventListener('click', async () => {
+  const name = ownerNewInput.value.trim();
+  if (!name) return;
+  ownerManageStatus.classList.remove('success', 'error');
+  try {
+    const updated = await fetch('/api/owners', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }).then((r) => r.json());
+    renderOwners(updated);
+    ownerNewInput.value = '';
+    ownerManageStatus.textContent = `Added "${name}".`;
+    ownerManageStatus.classList.add('success');
+    setTimeout(() => { ownerManageStatus.textContent = ''; ownerManageStatus.classList.remove('success'); }, 2000);
+  } catch (err) {
+    ownerManageStatus.textContent = 'Error: ' + err.message;
+    ownerManageStatus.classList.add('error');
+  }
+});
+ownerNewInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ownerAddBtn.click(); } });
+
+loadOwners();
+
 // ---- Detail view ----
 
 function fieldRow(label, value) {

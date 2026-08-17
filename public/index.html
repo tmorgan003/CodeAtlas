@@ -48,7 +48,8 @@
         </label>
         <div class="row">
           <label>Owner / Team
-            <input type="text" name="owner" placeholder="e.g. Platform Team" />
+            <input type="text" name="owner" list="owner-options" placeholder="e.g. Platform Team" autocomplete="off" />
+            <datalist id="owner-options"></datalist>
           </label>
           <label>Environment
             <input type="text" name="environment" list="environment-options" placeholder="e.g. Production, QA, Dev, DR" autocomplete="off" />
@@ -110,6 +111,19 @@
           <textarea id="bulk-textarea" rows="6" placeholder="C:\path\to\app1&#10;https://github.com/org/repo2.git&#10;Billing API,C:\path\to\billing,Production,Platform Team,backend"></textarea>
           <button type="button" id="bulk-submit">Import Apps</button>
           <p class="form-status" id="bulk-status"></p>
+        </div>
+      </details>
+
+      <details id="owners-details">
+        <summary><h2>Manage Owners</h2></summary>
+        <div class="owners-manage">
+          <p class="bulk-help">Owner / Team on the form above must match a name here — keeps ownership consistent instead of free text drifting ("Platform Team" vs "platform team" vs "Platform").</p>
+          <div class="path-input-row">
+            <input type="text" id="owner-new-input" placeholder="Add an owner/team name" />
+            <button type="button" id="owner-add-btn">Add</button>
+          </div>
+          <p class="form-status" id="owner-manage-status"></p>
+          <div id="owners-list" class="severity-chip-row"></div>
         </div>
       </details>
     </section>

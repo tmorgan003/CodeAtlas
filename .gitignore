@@ -1,5 +1,6 @@
 node_modules/
 data/apps.json
+data/owners.json
 data/repos/
 data/scan-cache/
 data/history/
