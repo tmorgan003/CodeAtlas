@@ -289,7 +289,90 @@ async function refreshList() {
   allApps = apps;
   populateFilterOptions(apps);
   applyFilters();
+  loadDashboard();
   return apps;
+}
+
+// ---- Portfolio dashboard ----
+
+const dashboardContent = document.getElementById('dashboard-content');
+const SEVERITY_ORDER = ['Critical', 'High', 'Medium', 'Low'];
+
+function statTile(value, label) {
+  const div = document.createElement('div');
+  div.className = 'stat-tile';
+  const val = document.createElement('div');
+  val.className = 'stat-value';
+  val.textContent = value;
+  const lbl = document.createElement('div');
+  lbl.className = 'stat-label';
+  lbl.textContent = label;
+  div.append(val, lbl);
+  return div;
+}
+
+async function loadDashboard() {
+  let d;
+  try {
+    d = await api('/dashboard');
+  } catch {
+    return;
+  }
+  dashboardContent.innerHTML = '';
+
+  const stats = document.createElement('div');
+  stats.className = 'dashboard-stats';
+  stats.appendChild(statTile(d.totalApps, 'Apps'));
+  stats.appendChild(statTile(d.totalActiveIssues, 'Active Issues'));
+  stats.appendChild(statTile(d.staleApps.length, `Stale (>${d.staleDaysThreshold}d)`));
+  dashboardContent.appendChild(stats);
+
+  const severityRow = document.createElement('div');
+  severityRow.className = 'severity-chip-row';
+  for (const sev of SEVERITY_ORDER) {
+    const count = d.bySeverity[sev] || 0;
+    if (!count) continue;
+    const chip = document.createElement('span');
+    chip.className = 'severity-badge ' + (SEVERITY_BADGE_CLASS[sev] || 'severity-low');
+    chip.textContent = `${sev}: ${count}`;
+    severityRow.appendChild(chip);
+  }
+  if (severityRow.children.length) dashboardContent.appendChild(severityRow);
+
+  const envRow = document.createElement('div');
+  envRow.className = 'severity-chip-row';
+  for (const [env, count] of Object.entries(d.byEnvironment)) {
+    const chip = document.createElement('span');
+    chip.className = 'env-badge ' + (ENV_BADGE_CLASS[env] || 'env-internal');
+    chip.textContent = `${env}: ${count}`;
+    envRow.appendChild(chip);
+  }
+  if (envRow.children.length) dashboardContent.appendChild(envRow);
+
+  if (d.staleApps.length) {
+    const staleHeading = document.createElement('p');
+    staleHeading.className = 'dashboard-subheading';
+    staleHeading.textContent = 'Needs a rescan:';
+    dashboardContent.appendChild(staleHeading);
+
+    const list = document.createElement('ul');
+    list.className = 'stale-list';
+    for (const s of d.staleApps) {
+      const li = document.createElement('li');
+      li.className = 'stale-item';
+      const link = document.createElement('a');
+      link.href = '#';
+      link.textContent = s.name;
+      link.style.color = 'var(--accent-text)';
+      link.addEventListener('click', (e) => { e.preventDefault(); openDetail(s.id); });
+      const age = document.createElement('span');
+      age.className = 'stale-age';
+      age.textContent = s.daysSinceScan === null ? 'never scanned' : `${s.daysSinceScan}d ago`;
+      li.append(link, age);
+      list.appendChild(li);
+    }
+    dashboardContent.appendChild(list);
+  }
 }
 
 async function triggerScan(id) {

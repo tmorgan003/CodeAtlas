@@ -306,6 +306,17 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
 .issue-detail { margin: 0.3rem 0; grid-template-columns: 120px 1fr; }
 .issue-detail dd { white-space: pre-wrap; }
 
+.dashboard-stats { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.stat-tile { background: var(--inset); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 1rem; min-width: 100px; }
+.stat-tile .stat-value { font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
+.stat-tile .stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+.severity-chip-row { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.dashboard-subheading { margin: 0.9rem 0 0.4rem; font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+.stale-list { list-style: none; margin: 0; padding: 0; }
+.stale-item { display: flex; justify-content: space-between; align-items: baseline; padding: 0.35rem 0; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+.stale-item:last-child { border-bottom: none; }
+.stale-age { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
+
 #app-table tbody tr { animation-fill-mode: both; }
 #app-table tbody tr.row-enter { animation: rowEnter var(--dur-base) var(--ease-out); }
 

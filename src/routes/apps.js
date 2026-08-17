@@ -19,6 +19,51 @@ router.get('/', (req, res) => {
   res.json(db.loadAll());
 });
 
+// Portfolio-wide rollup for the dashboard landing view: issue counts by
+// severity, apps by status/environment, and which apps haven't been
+// scanned recently. Must be registered before /:id or Express would treat
+// "dashboard" as an app id.
+const STALE_DAYS = 14;
+
+router.get('/dashboard', (req, res) => {
+  const apps = db.loadAll();
+  const now = Date.now();
+  const byStatus = {};
+  const byEnvironment = {};
+  const bySeverity = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  let totalActiveIssues = 0;
+  const staleApps = [];
+
+  for (const app of apps) {
+    byStatus[app.status] = (byStatus[app.status] || 0) + 1;
+    const envKey = app.environment || 'Unset';
+    byEnvironment[envKey] = (byEnvironment[envKey] || 0) + 1;
+
+    const daysSinceScan = app.scannedAt ? (now - new Date(app.scannedAt).getTime()) / 86400000 : null;
+    if (daysSinceScan === null || daysSinceScan > STALE_DAYS) {
+      staleApps.push({
+        id: app.id,
+        name: app.name,
+        scannedAt: app.scannedAt,
+        daysSinceScan: daysSinceScan === null ? null : Math.floor(daysSinceScan),
+      });
+    }
+
+    const latest = history.getLatestSnapshot(app.id);
+    if (!latest) continue;
+    const triageMap = triage.loadTriage(app.id);
+    for (const issue of latest.issues) {
+      if (triage.isDismissed(triageMap, issue)) continue;
+      bySeverity[issue.severity] = (bySeverity[issue.severity] || 0) + 1;
+      totalActiveIssues += 1;
+    }
+  }
+
+  staleApps.sort((a, b) => (b.daysSinceScan === null ? Infinity : b.daysSinceScan) - (a.daysSinceScan === null ? Infinity : a.daysSinceScan));
+
+  res.json({ totalApps: apps.length, byStatus, byEnvironment, bySeverity, totalActiveIssues, staleApps, staleDaysThreshold: STALE_DAYS });
+});
+
 router.get('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
