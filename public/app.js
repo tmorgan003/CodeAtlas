@@ -824,16 +824,25 @@ async function runCompare() {
   }
 }
 
-compareAppsBtn.addEventListener('click', () => {
+// Feature 11: cross-environment comparison — jump straight into comparing
+// two specific apps (e.g. the same app's Staging vs Production entries)
+// instead of picking both from scratch in the dropdowns. Reuses the same
+// generic two-app compare view/API; only the entry point differs.
+function openCompareWith(idA, idB) {
   listPanel.hidden = true;
   detailPanel.hidden = true;
   comparePanel.hidden = false;
-  const options = allApps.map((a) => `<option value="${a.id}">${a.name}</option>`).join('');
+  const options = allApps.map((a) => `<option value="${a.id}">${a.name} (${a.environment || 'no env'})</option>`).join('');
   compareAppA.innerHTML = options;
   compareAppB.innerHTML = options;
-  if (allApps.length > 1) compareAppB.selectedIndex = 1;
+  if (idA) compareAppA.value = idA;
+  if (idB) compareAppB.value = idB;
+  if (!idA && !idB && allApps.length > 1) compareAppB.selectedIndex = 1;
   compareContent.innerHTML = '';
-});
+  if (idA && idB) runCompare();
+}
+
+compareAppsBtn.addEventListener('click', () => openCompareWith(null, null));
 
 closeCompareBtn.addEventListener('click', () => {
   comparePanel.hidden = true;
@@ -1519,6 +1528,28 @@ async function openDetail(id) {
     detailMeta.append(...fieldRow('Purpose', app.purpose));
     detailMeta.append(...fieldRow('Owner / Team', app.owner));
     detailMeta.append(...badgeFieldRow('Environment', app.environment, ENV_BADGE_CLASS[app.environment] || 'env-internal', 'env-badge'));
+
+    // Feature 11: cross-environment comparison — apps sharing this app's
+    // name but registered under a different Environment (e.g. "Billing API"
+    // in Staging vs Production) are almost always the same underlying
+    // service scanned twice, so surface a one-click compare against each.
+    const siblings = allApps.filter((a) => a.id !== app.id && a.name.toLowerCase() === app.name.toLowerCase());
+    if (siblings.length) {
+      const crossEnvDt = document.createElement('dt');
+      crossEnvDt.textContent = 'Cross-Environment';
+      const crossEnvDd = document.createElement('dd');
+      for (const sib of siblings) {
+        const link = document.createElement('a');
+        link.href = '#';
+        link.className = 'tag-badge tech-app-chip';
+        link.textContent = `vs. ${sib.environment || 'no env'}`;
+        link.title = `Compare against "${sib.name}" (${sib.environment || 'no env'})`;
+        link.addEventListener('click', (e) => { e.preventDefault(); openCompareWith(app.id, sib.id); });
+        crossEnvDd.appendChild(link);
+      }
+      detailMeta.append(crossEnvDt, crossEnvDd);
+    }
+
     detailMeta.append(...fieldRow('Tech Stack', app.techStack));
     detailMeta.append(...fieldRow('Tags', (app.tags || []).join(', ')));
     detailMeta.append(...fieldRow('Notes', app.notes));
