@@ -49,6 +49,8 @@ function create(fields) {
     scheduleMinutes: Number(fields.scheduleMinutes) > 0 ? Number(fields.scheduleMinutes) : 0,
     notifyWebhookUrl: fields.notifyWebhookUrl || '',
     failOnSeverity: GATE_SEVERITIES.has(fields.failOnSeverity) ? fields.failOnSeverity : 'Critical',
+    digestEnabled: !!fields.digestEnabled,
+    lastDigestAt: null,
     status: 'Not Started',
     wikiLink: null,
     localPath: null,

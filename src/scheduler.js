@@ -7,6 +7,7 @@
 
 const db = require('./store/db');
 const { triggerAppScan } = require('./scanRunner');
+const { sendDigestIfDue } = require('./scanner/digest');
 
 const CHECK_INTERVAL_MS = 60 * 1000;
 const INITIAL_DELAY_MS = 5000;
@@ -25,6 +26,7 @@ function tick() {
     if (isDue(app, now)) {
       triggerAppScan(app).catch(() => { /* recorded on the app entry + progress bus */ });
     }
+    sendDigestIfDue(app, now).catch(() => { /* best-effort; next tick retries */ });
   }
 }
 

@@ -165,18 +165,18 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity } = req.body || {};
+  const { name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled } = req.body || {};
   if (!name || !pathOrRepo) {
     return res.status(400).json({ error: 'name and pathOrRepo are required' });
   }
-  const entry = db.create({ name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity });
+  const entry = db.create({ name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled });
   res.status(201).json(entry);
 });
 
 router.patch('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
-  const { purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity } = req.body || {};
+  const { purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled } = req.body || {};
   const patch = {};
   if (purpose !== undefined) patch.purpose = purpose;
   if (owner !== undefined) patch.owner = owner;
@@ -191,6 +191,7 @@ router.patch('/:id', (req, res) => {
     if (!db.GATE_SEVERITIES.has(failOnSeverity)) return res.status(400).json({ error: `failOnSeverity must be one of: ${[...db.GATE_SEVERITIES].join(', ')}` });
     patch.failOnSeverity = failOnSeverity;
   }
+  if (digestEnabled !== undefined) patch.digestEnabled = !!digestEnabled;
   const updated = db.update(app.id, patch);
   res.json(updated);
 });

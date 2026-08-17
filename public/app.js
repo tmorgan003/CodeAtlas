@@ -856,6 +856,31 @@ async function openDetail(id) {
 
     detailMeta.append(...fieldRow('Auto-rescan', SCHEDULE_LABELS[app.scheduleMinutes] || `Every ${app.scheduleMinutes} min`));
     detailMeta.append(...fieldRow('Notify Webhook', app.notifyWebhookUrl || '—'));
+
+    // Feature 12: weekly digest — a periodic rollup, opt-in and editable
+    // per app, distinct from the on-completion webhook notification.
+    const digestDt = document.createElement('dt');
+    digestDt.textContent = 'Weekly Digest';
+    const digestDd = document.createElement('dd');
+    const digestLabel = document.createElement('label');
+    digestLabel.style.display = 'inline-flex';
+    digestLabel.style.alignItems = 'center';
+    digestLabel.style.gap = '0.4rem';
+    digestLabel.style.marginBottom = '0';
+    const digestCheckbox = document.createElement('input');
+    digestCheckbox.type = 'checkbox';
+    digestCheckbox.checked = !!app.digestEnabled;
+    digestCheckbox.disabled = !app.notifyWebhookUrl;
+    digestCheckbox.addEventListener('change', async () => {
+      await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ digestEnabled: digestCheckbox.checked }) });
+    });
+    const digestText = document.createElement('span');
+    digestText.textContent = app.notifyWebhookUrl
+      ? (app.lastDigestAt ? `Last sent ${new Date(app.lastDigestAt).toLocaleString()}` : 'Not sent yet')
+      : 'Requires a Notify Webhook URL';
+    digestLabel.append(digestCheckbox, digestText);
+    digestDd.appendChild(digestLabel);
+    detailMeta.append(digestDt, digestDd);
     detailMeta.append(...badgeFieldRow('Status', app.status, statusClass(app.status), 'status-badge'));
     detailMeta.append(...fieldRow('Wiki Location', app.wikiLink));
     detailMeta.append(...fieldRow('Last Scanned', app.scannedAt ? new Date(app.scannedAt).toLocaleString() : ''));

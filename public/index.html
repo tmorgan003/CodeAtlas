@@ -93,6 +93,10 @@
             <input type="text" name="notifyWebhookUrl" placeholder="Slack incoming webhook or generic URL (optional)" />
           </label>
         </div>
+        <label class="checkbox-label">
+          <input type="checkbox" name="digestEnabled" />
+          Weekly digest (send a rollup of new/resolved issues to the webhook above every 7 days, in addition to the on-completion notification)
+        </label>
         <button type="submit">Add Application</button>
         <p class="form-status" id="form-status"></p>
         </form>
