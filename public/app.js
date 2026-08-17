@@ -515,7 +515,9 @@ async function loadIssuesInteractive(id) {
     const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
     issues.sort((a, b) => order[a.severity] - order[b.severity]);
     const table = document.createElement('table');
+    table.className = 'issues-table fit-container';
     table.innerHTML = '<tr><th>Severity</th><th>Category</th><th>File</th><th>Line</th><th>Summary</th><th>Triage</th></tr>';
+    const SUMMARY_TRUNCATE_AT = 75;
     for (const issue of issues) {
       const tr = document.createElement('tr');
       if (issue.triage.state === 'false_positive' || issue.triage.state === 'fixed') tr.style.opacity = '0.5';
@@ -527,12 +529,39 @@ async function loadIssuesInteractive(id) {
       severityTd.appendChild(severityBadge);
       tr.appendChild(severityTd);
 
-      const cells = [issue.category, issue.file, String(issue.line), issue.summary];
-      for (const c of cells) {
-        const td = document.createElement('td');
-        td.textContent = c;
-        tr.appendChild(td);
+      const categoryTd = document.createElement('td');
+      categoryTd.className = 'cell-category';
+      categoryTd.textContent = issue.category;
+      categoryTd.title = issue.category;
+      tr.appendChild(categoryTd);
+
+      const fileTd = document.createElement('td');
+      fileTd.className = 'cell-file';
+      fileTd.textContent = issue.file.split('/').pop();
+      fileTd.title = issue.file;
+      tr.appendChild(fileTd);
+
+      const lineTd = document.createElement('td');
+      lineTd.textContent = String(issue.line);
+      tr.appendChild(lineTd);
+
+      const summaryTd = document.createElement('td');
+      summaryTd.className = 'cell-summary';
+      const isLong = issue.summary.length > SUMMARY_TRUNCATE_AT;
+      const summarySpan = document.createElement('span');
+      summarySpan.textContent = isLong ? issue.summary.slice(0, SUMMARY_TRUNCATE_AT - 1).trimEnd() + '…' : issue.summary;
+      summaryTd.appendChild(summarySpan);
+      let detailsBtn = null;
+      if (isLong || issue.suggestedFix) {
+        summaryTd.appendChild(document.createTextNode(' '));
+        detailsBtn = document.createElement('button');
+        detailsBtn.type = 'button';
+        detailsBtn.className = 'link-button details-toggle';
+        detailsBtn.textContent = 'Show details';
+        summaryTd.appendChild(detailsBtn);
       }
+      tr.appendChild(summaryTd);
+
       const triageTd = document.createElement('td');
       const select = document.createElement('select');
       for (const s of TRIAGE_STATES) {
@@ -549,6 +578,35 @@ async function loadIssuesInteractive(id) {
       triageTd.appendChild(select);
       tr.appendChild(triageTd);
       table.appendChild(tr);
+
+      if (detailsBtn) {
+        const detailTr = document.createElement('tr');
+        detailTr.className = 'issue-detail-row';
+        detailTr.hidden = true;
+        const detailTd = document.createElement('td');
+        detailTd.colSpan = 6;
+        const dl = document.createElement('dl');
+        dl.className = 'issue-detail';
+        const addEntry = (term, value) => {
+          const dt = document.createElement('dt');
+          dt.textContent = term;
+          const dd = document.createElement('dd');
+          dd.textContent = value;
+          dl.append(dt, dd);
+        };
+        addEntry('File', issue.file);
+        addEntry('Summary', issue.summary);
+        if (issue.suggestedFix) addEntry('Suggested Fix', issue.suggestedFix);
+        if (issue.triage.note) addEntry('Triage Note', issue.triage.note);
+        detailTd.appendChild(dl);
+        detailTr.appendChild(detailTd);
+        table.appendChild(detailTr);
+
+        detailsBtn.addEventListener('click', () => {
+          detailTr.hidden = !detailTr.hidden;
+          detailsBtn.textContent = detailTr.hidden ? 'Show details' : 'Hide details';
+        });
+      }
     }
     withViewTransition(() => {
       wikiView.innerHTML = '<h2>Issues</h2><p>Setting a finding to "false_positive" or "fixed" removes it from the active count and CLI severity gating on the next scan.</p>';
@@ -724,12 +782,45 @@ async function loadHistory(id) {
   }
 }
 
+// Shortens any table column headed "File" down to just the filename,
+// keeping the full path reachable via a hover title — used on wiki pages
+// (e.g. Data-Model.md) whose tables list full repo-relative paths that
+// would otherwise force horizontal scrolling.
+function truncateFileColumns(container) {
+  for (const table of container.querySelectorAll('table')) {
+    const headerRow = table.querySelector('tr');
+    if (!headerRow) continue;
+    const headers = Array.from(headerRow.children).map((th) => th.textContent.trim());
+    const fileIdx = headers.indexOf('File');
+    if (fileIdx === -1) continue;
+    // Switch this table to a fixed layout that fits its container instead of
+    // growing to fit content — the File column is capped, other columns
+    // share the rest, so the table never forces horizontal scrolling.
+    table.classList.add('fit-container');
+    headerRow.children[fileIdx].style.width = '22%';
+    const rows = Array.from(table.querySelectorAll('tr')).slice(1);
+    for (const row of rows) {
+      const cell = row.children[fileIdx];
+      if (!cell) continue;
+      cell.classList.add('cell-file');
+      const target = cell.querySelector('code') || cell;
+      const full = target.textContent;
+      if (!full.includes('/')) continue;
+      target.textContent = full.slice(full.lastIndexOf('/') + 1);
+      cell.title = full;
+    }
+  }
+}
+
 async function loadWikiPage(id, wikiPath) {
   try {
     const { path: resolvedPath, content } = await api(`/${id}/wiki-file?path=${encodeURIComponent(wikiPath)}`);
     currentWikiDir = resolvedPath.includes('/') ? resolvedPath.slice(0, resolvedPath.lastIndexOf('/')) : '';
     const html = renderMarkdown(content, currentWikiDir, id);
-    withViewTransition(() => { wikiView.innerHTML = html; });
+    withViewTransition(() => {
+      wikiView.innerHTML = html;
+      if (wikiPath === 'Data-Model.md') truncateFileColumns(wikiView);
+    });
   } catch (err) {
     wikiView.textContent = 'Could not load page: ' + err.message;
   }

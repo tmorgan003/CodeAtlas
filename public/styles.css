@@ -273,11 +273,38 @@ table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
 th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
 
-/* Prevents a wide table (long paths, many tags, a long Issues summary
-   column) from forcing the whole page to scroll horizontally on a narrow
-   viewport — the table scrolls in place instead. */
+/* Prevents a wide table (many tags, an unbounded column) from forcing the
+   whole page to scroll horizontally on a narrow viewport — the table
+   scrolls in place instead. Opt-out tables (.fit-container) size to their
+   container instead of their content, since their columns are already
+   truncated with full detail reachable via hover/expansion, and forcing
+   scroll on top of that would just hide the same information twice. */
 .table-scroll { overflow-x: auto; }
 .table-scroll table { min-width: max-content; }
+.table-scroll table.fit-container { min-width: 0; width: calc(100% - 8px); table-layout: fixed; }
+
+/* File columns show just the filename inline; the full repo-relative path
+   is reachable via the native title tooltip on hover instead of widening
+   the column. */
+.cell-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
+
+/* Issues Summary column: truncated inline, full text + metadata reachable
+   via the "Show details" toggle instead of a permanently wide column. */
+.cell-category { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
+.cell-summary { white-space: normal; word-break: break-word; }
+.cell-triage select { width: 100%; }
+.details-toggle { white-space: nowrap; margin-bottom: 0; }
+.issue-detail-row td { background: var(--inset); }
+
+.issues-table th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.issues-table th:nth-child(1), .issues-table td:nth-child(1) { width: 18%; }
+.issues-table th:nth-child(2), .issues-table td:nth-child(2) { width: 10%; }
+.issues-table th:nth-child(3), .issues-table td:nth-child(3) { width: 10%; }
+.issues-table th:nth-child(4), .issues-table td:nth-child(4) { width: 7%; }
+.issues-table th:nth-child(5), .issues-table td:nth-child(5) { width: 37%; }
+.issues-table th:nth-child(6), .issues-table td:nth-child(6) { width: 18%; }
+.issue-detail { margin: 0.3rem 0; grid-template-columns: 120px 1fr; }
+.issue-detail dd { white-space: pre-wrap; }
 
 #app-table tbody tr { animation-fill-mode: both; }
 #app-table tbody tr.row-enter { animation: rowEnter var(--dur-base) var(--ease-out); }
