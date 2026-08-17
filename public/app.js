@@ -133,6 +133,33 @@ browseSelectBtn.addEventListener('click', () => {
 });
 browseModal.addEventListener('click', (e) => { if (e.target === browseModal) closeBrowseModal(); });
 
+// Feature 16: rough pre-scan cost estimate for the Deep scan checkbox —
+// re-checked whenever the checkbox or path changes, so the warning isn't
+// just a generic "uses your Claude usage" with no number behind it.
+const deepScanCheckbox = document.getElementById('deep-scan-checkbox');
+const deepScanEstimate = document.getElementById('deep-scan-estimate');
+
+async function updateDeepScanEstimate() {
+  if (!deepScanCheckbox.checked) { deepScanEstimate.textContent = ''; return; }
+  const targetPath = pathInput.value.trim();
+  if (!targetPath || /^https?:\/\/|\.git$/.test(targetPath)) {
+    deepScanEstimate.textContent = 'Deep scan makes one Claude CLI call per scan, typically well under a minute. (Cost estimate unavailable for a repo URL until it is cloned — try a local path instead.)';
+    return;
+  }
+  deepScanEstimate.textContent = 'Estimating…';
+  try {
+    const res = await fetch(`/api/browse/estimate?path=${encodeURIComponent(targetPath)}`);
+    const body = await res.json();
+    if (!res.ok) { deepScanEstimate.textContent = body.error || 'Could not estimate.'; return; }
+    deepScanEstimate.textContent = `Deep scan estimate: ${body.fileCount} source file(s), ~${body.totalKB}KB → roughly ${body.estTokens} enrichment prompt token(s), ${body.estSecondsMin}-${body.estSecondsMax}s for the single Claude call (rough, based on codebase size).`;
+  } catch {
+    deepScanEstimate.textContent = '';
+  }
+}
+
+deepScanCheckbox.addEventListener('change', updateDeepScanEstimate);
+pathInput.addEventListener('blur', updateDeepScanEstimate);
+
 async function api(path, opts) {
   const res = await fetch(`/api/apps${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -489,6 +516,7 @@ form.addEventListener('submit', async (e) => {
     await api('', { method: 'POST', body: JSON.stringify(data) });
     form.reset();
     updateEnvSelectColor();
+    deepScanEstimate.textContent = '';
     formStatus.textContent = 'Added.';
     formStatus.classList.add('success');
     await refreshList();

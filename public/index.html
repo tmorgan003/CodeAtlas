@@ -77,9 +77,10 @@
           </select>
         </label>
         <label class="checkbox-label">
-          <input type="checkbox" name="scanMode" value="deep" />
+          <input type="checkbox" name="scanMode" value="deep" id="deep-scan-checkbox" />
           Deep scan (LLM-assisted via local Claude CLI — richer prose, slower, uses your Claude usage)
         </label>
+        <p class="form-status" id="deep-scan-estimate"></p>
         <div class="row">
           <label>Auto-rescan
             <select name="scheduleMinutes">
