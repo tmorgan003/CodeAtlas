@@ -1215,6 +1215,78 @@ async function loadEnvVarsInteractive(id) {
 // Hand-rolled SVG dependency graph — no charting library, just a circular
 // layout (simplest thing that stays legible without a physics engine) with
 // click-to-highlight for a node's direct edges.
+// Feature 14: export the dependency graph for sharing outside the app
+// (docs, tickets). The live SVG uses CSS custom properties (var(--border)
+// etc.) for theming, which don't resolve once the markup leaves this page,
+// so the exported copy has those inlined to their current resolved value
+// first — otherwise every stroke/fill would render as black/default in
+// whatever viewer opens the file.
+function resolveCssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function exportableSvgClone(svgEl, bgVarName) {
+  const clone = svgEl.cloneNode(true);
+  const varPattern = /var\((--[a-z0-9-]+)\)/gi;
+  const inlineColors = (el) => {
+    for (const attr of ['stroke', 'fill']) {
+      const val = el.getAttribute && el.getAttribute(attr);
+      if (val && val.indexOf('var(') !== -1) {
+        el.setAttribute(attr, val.replace(varPattern, (m, name) => resolveCssVar(name) || m));
+      }
+    }
+    for (const child of Array.from(el.children || [])) inlineColors(child);
+  };
+  inlineColors(clone);
+  clone.removeAttribute('style');
+  const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  bg.setAttribute('x', '0');
+  bg.setAttribute('y', '0');
+  bg.setAttribute('width', '100%');
+  bg.setAttribute('height', '100%');
+  bg.setAttribute('fill', resolveCssVar(bgVarName));
+  clone.insertBefore(bg, clone.firstChild);
+  return clone;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadGraphSvg(svgEl, filenameBase) {
+  const clone = exportableSvgClone(svgEl, '--panel');
+  const xml = new XMLSerializer().serializeToString(clone);
+  downloadBlob(new Blob([xml], { type: 'image/svg+xml' }), `${filenameBase}.svg`);
+}
+
+function downloadGraphPng(svgEl, filenameBase, sizePx) {
+  const clone = exportableSvgClone(svgEl, '--panel');
+  clone.setAttribute('width', String(sizePx));
+  clone.setAttribute('height', String(sizePx));
+  const xml = new XMLSerializer().serializeToString(clone);
+  const svgUrl = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' }));
+  const img = new Image();
+  img.onload = () => {
+    const scale = 2; // export at 2x for crisper text than the on-screen size
+    const canvas = document.createElement('canvas');
+    canvas.width = sizePx * scale;
+    canvas.height = sizePx * scale;
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      downloadBlob(blob, `${filenameBase}.png`);
+      URL.revokeObjectURL(svgUrl);
+    }, 'image/png');
+  };
+  img.src = svgUrl;
+}
+
 async function loadGraphView(id) {
   try {
     const g = await api(`/${id}/graph`);
@@ -1292,8 +1364,25 @@ async function loadGraphView(id) {
       nodeEls[n.id] = gEl;
     }
 
+    const appMeta = allApps.find((a) => a.id === id);
+    const filenameBase = (appMeta ? appMeta.name : 'app').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-dependency-graph';
+
     withViewTransition(() => {
       wikiView.innerHTML = `<h2>Dependency Graph</h2><p style="color:var(--muted);font-size:0.85rem">${g.nodes.length} file(s), ${g.edges.length} resolved import edge(s). Click a node to highlight its direct connections.</p>`;
+      const actions = document.createElement('div');
+      actions.className = 'graph-export-actions';
+      const svgBtn = document.createElement('button');
+      svgBtn.type = 'button';
+      svgBtn.className = 'secondary';
+      svgBtn.textContent = 'Download SVG';
+      svgBtn.addEventListener('click', () => downloadGraphSvg(svg, filenameBase));
+      const pngBtn = document.createElement('button');
+      pngBtn.type = 'button';
+      pngBtn.className = 'secondary';
+      pngBtn.textContent = 'Download PNG';
+      pngBtn.addEventListener('click', () => downloadGraphPng(svg, filenameBase, size));
+      actions.append(svgBtn, pngBtn);
+      wikiView.appendChild(actions);
       wikiView.appendChild(svg);
     });
   } catch (err) {
