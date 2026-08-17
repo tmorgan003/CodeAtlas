@@ -9,6 +9,7 @@ const owners = require('../store/owners');
 const envVarOverrides = require('../scanner/envVarOverrides');
 const customIgnore = require('../scanner/customIgnore');
 const customSecretRules = require('../scanner/customSecretRules');
+const customWikiSections = require('../scanner/customWikiSections');
 const graph = require('../scanner/graph');
 const { searchWiki } = require('../scanner/wikiSearch');
 const progressBus = require('../scanner/progressBus');
@@ -520,6 +521,43 @@ router.post('/:id/models/override', requireRole('editor'), (req, res) => {
   if (!modelName || !fieldName) return res.status(400).json({ error: 'modelName and fieldName are required' });
   const saved = dictionaryOverrides.setOverride(app.id, modelName, fieldName, description || '');
   res.json({ modelName, fieldName, description: saved });
+});
+
+// Custom wiki sections: team-added markdown pages (e.g. "Runbook") that
+// live outside the generated wiki/ dir so a rescan never touches them.
+router.get('/:id/wiki-sections', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  res.json(customWikiSections.loadSections(app.id));
+});
+
+router.post('/:id/wiki-sections', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { title, content } = req.body || {};
+  try {
+    res.status(201).json(customWikiSections.addSection(app.id, title, content));
+  } catch (err) {
+    res.status(400).json({ error: String((err && err.message) || err) });
+  }
+});
+
+router.patch('/:id/wiki-sections/:slug', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { title, content } = req.body || {};
+  try {
+    res.json(customWikiSections.updateSection(app.id, req.params.slug, { title, content }));
+  } catch (err) {
+    res.status(400).json({ error: String((err && err.message) || err) });
+  }
+});
+
+router.delete('/:id/wiki-sections/:slug', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  customWikiSections.removeSection(app.id, req.params.slug);
+  res.status(204).end();
 });
 
 // Feature 13: env vars referenced in code, merged with any human-written

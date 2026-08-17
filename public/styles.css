@@ -511,6 +511,8 @@ dd { margin: 0; word-break: break-word; }
   line-height: 1.55;
 }
 .wiki-view h1, .wiki-view h2, .wiki-view h3 { margin-top: 1.4em; }
+.custom-section-title-input { font-size: 1.5rem; font-weight: 800; width: 100%; margin-bottom: 0.5rem; }
+.custom-section-textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; margin-bottom: 0.5rem; resize: vertical; }
 .wiki-view code { background: var(--inset); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.85em; }
 .wiki-view pre { background: var(--inset); padding: 0.8rem; border-radius: 6px; overflow-x: auto; }
 .wiki-view table { margin: 0.75rem 0; }

@@ -24,6 +24,7 @@ const trackerForm = document.getElementById('tracker-form');
 const trackerFormStatus = document.getElementById('tracker-form-status');
 
 let currentDetailId = null;
+let currentDetailApp = null;
 let currentWikiDir = '';
 
 // ---- Motion helper ----
@@ -1488,6 +1489,7 @@ function badgeFieldRow(label, value, badgeClass, baseClass) {
 async function openDetail(id) {
   currentDetailId = id;
   const app = await api(`/${id}`);
+  currentDetailApp = app;
   withViewTransition(() => {
     listPanel.hidden = true;
     detailPanel.hidden = false;
@@ -1670,7 +1672,7 @@ async function openDetail(id) {
   if (app.status === 'Done' && app.wikiLink) {
     closeScanStream();
     wikiNav.hidden = false;
-    renderWikiNav(id, app);
+    await renderWikiNav(id, app);
     await loadWikiPage(id, 'Home.md');
   } else if (app.status === 'Scanning') {
     wikiNav.hidden = true;
@@ -1714,7 +1716,7 @@ function wikiNavGroup(items) {
   return group;
 }
 
-function renderWikiNav(id, app) {
+async function renderWikiNav(id, app) {
   wikiLinks.innerHTML = '';
 
   const pages = [
@@ -1739,8 +1741,123 @@ function renderWikiNav(id, app) {
   const isRepo = /^https?:\/\/|\.git$/.test(app.pathOrRepo || '');
   if (isRepo) actions.push(['Push to Wiki Repo', () => pushGithubWiki(id)]);
 
-  wikiLinks.append(wikiNavGroup(pages), wikiNavGroup(tools), wikiNavGroup(actions));
+  wikiLinks.append(wikiNavGroup(pages), wikiNavGroup(tools));
+
+  // Feature 10: custom wiki sections — team-added markdown pages that live
+  // outside the generated wiki/ dir, so they persist across rescans. Own
+  // nav group since the count is per-app and open-ended.
+  try {
+    const customSections = await api(`/${id}/wiki-sections`);
+    if (customSections.length) {
+      wikiLinks.appendChild(wikiNavGroup(customSections.map((s) => [s.title, () => loadCustomSection(id, s.slug)])));
+    }
+  } catch {
+    // non-fatal — custom pages just won't show up in the nav this time
+  }
+
+  wikiLinks.append(wikiNavGroup(actions));
 }
+
+// ---- Custom wiki sections (Feature 10) ----
+
+function renderCustomSectionEditor(id, section) {
+  withViewTransition(() => {
+    wikiView.innerHTML = '';
+
+    const titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.value = section.title;
+    titleInput.className = 'custom-section-title-input';
+
+    const meta = document.createElement('p');
+    meta.style.color = 'var(--muted)';
+    meta.style.fontSize = '0.8rem';
+    const setMetaText = () => { meta.textContent = `Custom page — persists across rescans. Last edited ${new Date(section.updatedAt).toLocaleString()}.`; };
+    setMetaText();
+
+    const textarea = document.createElement('textarea');
+    textarea.value = section.content;
+    textarea.rows = 16;
+    textarea.className = 'custom-section-textarea';
+    textarea.placeholder = 'Write this page in Markdown...';
+
+    const status = document.createElement('p');
+    status.className = 'form-status';
+
+    const previewHeading = document.createElement('h3');
+    previewHeading.textContent = 'Preview';
+    const preview = document.createElement('div');
+    const updatePreview = () => { preview.innerHTML = renderMarkdown(textarea.value, '', id); };
+    updatePreview();
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'secondary';
+    deleteBtn.textContent = 'Delete Page';
+    deleteBtn.addEventListener('click', async () => {
+      await api(`/${id}/wiki-sections/${encodeURIComponent(section.slug)}`, { method: 'DELETE' });
+      await renderWikiNav(id, currentDetailApp);
+      loadWikiPage(id, 'Home.md');
+    });
+
+    const save = async () => {
+      status.classList.remove('success', 'error');
+      status.textContent = 'Saving…';
+      try {
+        const updated = await api(`/${id}/wiki-sections/${encodeURIComponent(section.slug)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ title: titleInput.value, content: textarea.value }),
+        });
+        section.title = updated.title;
+        section.content = updated.content;
+        section.updatedAt = updated.updatedAt;
+        setMetaText();
+        status.textContent = 'Saved.';
+        status.classList.add('success');
+        await renderWikiNav(id, currentDetailApp); // title may have changed
+        setTimeout(() => { status.textContent = ''; status.classList.remove('success'); }, 1500);
+      } catch (err) {
+        status.textContent = 'Error: ' + err.message;
+        status.classList.add('error');
+      }
+    };
+    titleInput.addEventListener('blur', save);
+    titleInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') titleInput.blur(); });
+    textarea.addEventListener('input', updatePreview);
+    textarea.addEventListener('blur', save);
+
+    wikiView.append(titleInput, meta, textarea, status, deleteBtn, document.createElement('hr'), previewHeading, preview);
+  });
+}
+
+async function loadCustomSection(id, slug) {
+  try {
+    const sections = await api(`/${id}/wiki-sections`);
+    const section = sections.find((s) => s.slug === slug);
+    if (!section) { wikiView.textContent = 'Page not found — it may have been deleted.'; return; }
+    renderCustomSectionEditor(id, section);
+  } catch (err) {
+    wikiView.textContent = 'Could not load page: ' + err.message;
+  }
+}
+
+const addPageForm = document.getElementById('add-page-form');
+const addPageTitleInput = document.getElementById('add-page-title-input');
+
+addPageForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!currentDetailId) return;
+  const title = addPageTitleInput.value.trim();
+  if (!title) return;
+  try {
+    const section = await api(`/${currentDetailId}/wiki-sections`, { method: 'POST', body: JSON.stringify({ title, content: '' }) });
+    addPageTitleInput.value = '';
+    await renderWikiNav(currentDetailId, currentDetailApp);
+    renderCustomSectionEditor(currentDetailId, section);
+  } catch (err) {
+    wikiView.textContent = 'Could not create page: ' + err.message;
+  }
+});
 
 async function exportStaticSite(id) {
   try {
