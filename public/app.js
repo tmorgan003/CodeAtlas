@@ -465,6 +465,89 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
+// ---- Portfolio tech stack view ----
+
+const techStackBtn = document.getElementById('tech-stack-btn');
+const techStackPanel = document.getElementById('tech-stack-panel');
+const closeTechStackBtn = document.getElementById('close-tech-stack');
+const techStackContent = document.getElementById('tech-stack-content');
+
+function techChip(app) {
+  const chip = document.createElement('a');
+  chip.href = '#';
+  chip.className = 'tag-badge tech-app-chip';
+  chip.textContent = app.name;
+  chip.addEventListener('click', (e) => {
+    e.preventDefault();
+    techStackPanel.hidden = true;
+    openDetail(app.id);
+  });
+  return chip;
+}
+
+async function loadTechStack() {
+  const data = await fetch('/api/apps/tech-stack').then((r) => r.json());
+  techStackContent.innerHTML = '';
+
+  const shared = data.shared.filter((s) => s.apps.length > 1);
+  const unique = data.shared.filter((s) => s.apps.length === 1);
+
+  if (shared.length) {
+    const heading = document.createElement('p');
+    heading.className = 'dashboard-subheading';
+    heading.textContent = `Shared across multiple apps (${shared.length}):`;
+    techStackContent.appendChild(heading);
+    const table = document.createElement('table');
+    table.innerHTML = '<tr><th>Technology</th><th># Apps</th><th>Apps</th></tr>';
+    for (const s of shared) {
+      const tr = document.createElement('tr');
+      const techTd = document.createElement('td');
+      techTd.textContent = s.tech;
+      const countTd = document.createElement('td');
+      countTd.textContent = String(s.apps.length);
+      const appsTd = document.createElement('td');
+      for (const a of s.apps) appsTd.appendChild(techChip(a));
+      tr.append(techTd, countTd, appsTd);
+      table.appendChild(tr);
+    }
+    const scroll = document.createElement('div');
+    scroll.className = 'table-scroll';
+    scroll.appendChild(table);
+    techStackContent.appendChild(scroll);
+  } else {
+    techStackContent.innerHTML = '<p class="empty-state">No technology is shared by more than one app yet.</p>';
+  }
+
+  if (unique.length) {
+    const heading = document.createElement('p');
+    heading.className = 'dashboard-subheading';
+    heading.textContent = 'Used by one app only:';
+    techStackContent.appendChild(heading);
+    const row = document.createElement('div');
+    row.className = 'severity-chip-row';
+    for (const s of unique) {
+      const chip = document.createElement('span');
+      chip.className = 'tag-badge';
+      chip.textContent = `${s.tech} (${s.apps[0].name})`;
+      row.appendChild(chip);
+    }
+    techStackContent.appendChild(row);
+  }
+}
+
+techStackBtn.addEventListener('click', async () => {
+  listPanel.hidden = true;
+  detailPanel.hidden = true;
+  techStackPanel.hidden = false;
+  techStackContent.innerHTML = '<p>Loading…</p>';
+  await loadTechStack();
+});
+
+closeTechStackBtn.addEventListener('click', () => {
+  techStackPanel.hidden = true;
+  listPanel.hidden = false;
+});
+
 // ---- Cross-app issue view ----
 
 const allIssuesBtn = document.getElementById('all-issues-btn');

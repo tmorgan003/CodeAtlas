@@ -112,7 +112,15 @@
     <section class="panel" id="dashboard-panel">
       <h2>Portfolio Overview</h2>
       <button type="button" class="secondary" id="all-issues-btn">View All Issues</button>
+      <button type="button" class="secondary" id="tech-stack-btn">View Tech Stack</button>
       <div id="dashboard-content"></div>
+    </section>
+
+    <section class="panel" id="tech-stack-panel" hidden>
+      <button id="close-tech-stack" class="link-button">&larr; Back to list</button>
+      <h2>Portfolio Tech Stack</h2>
+      <p style="color:var(--muted);font-size:0.85rem">Combines each app's Tech Stack field with anything auto-detected on its latest scan. Shared entries are useful for planning version upgrades or migrations.</p>
+      <div id="tech-stack-content"></div>
     </section>
 
     <section class="panel" id="cross-issues-panel" hidden>

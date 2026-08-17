@@ -261,6 +261,11 @@ async function runScan(rootPath, meta, onProgress) {
       issues: ctx.allIssues,
       routes: ctx.allRoutes.map((r) => ({ method: r.method, path: r.path, file: r.file })),
       models: models.map((m) => ({ name: m.name, source: m.source, file: m.file, fields: m.fields, relationships: m.relationships })),
+      // Feature 8: auto-detected frameworks/ecosystems, so a portfolio-wide
+      // tech stack view can group apps by what they actually use instead of
+      // relying only on the free-text techStack field.
+      frameworks: structureInfo.frameworks,
+      ecosystems: [...new Set(structureInfo.manifests.map((m) => m.ecosystem))],
     };
     const previous = history.getLatestSnapshot(meta.appId);
     diff = history.diffSnapshots(previous, snapshot);

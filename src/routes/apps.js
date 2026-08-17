@@ -132,6 +132,31 @@ router.get('/issues', (req, res) => {
   res.json(all);
 });
 
+// Feature 8: portfolio-wide tech stack view — which apps share a framework
+// or dependency, combining the free-text techStack field with whatever the
+// scanner auto-detected (frameworks/ecosystems) on each app's latest scan.
+// Registered before /:id for the same reason as the other list-level routes.
+router.get('/tech-stack', (req, res) => {
+  const apps = db.loadAll();
+  const perApp = [];
+  const techMap = new Map();
+  for (const app of apps) {
+    const manual = (app.techStack || '').split(',').map((t) => t.trim()).filter(Boolean);
+    const latest = history.getLatestSnapshot(app.id);
+    const detected = latest ? [...(latest.frameworks || []), ...(latest.ecosystems || [])] : [];
+    const combined = [...new Set([...manual, ...detected])];
+    perApp.push({ id: app.id, name: app.name, tech: combined });
+    for (const t of combined) {
+      if (!techMap.has(t)) techMap.set(t, []);
+      techMap.get(t).push({ id: app.id, name: app.name });
+    }
+  }
+  const shared = [...techMap.entries()]
+    .map(([tech, techApps]) => ({ tech, apps: techApps }))
+    .sort((a, b) => b.apps.length - a.apps.length || a.tech.localeCompare(b.tech));
+  res.json({ perApp, shared });
+});
+
 router.get('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
