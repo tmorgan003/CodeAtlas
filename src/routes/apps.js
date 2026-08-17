@@ -164,6 +164,45 @@ router.get('/tech-stack', (req, res) => {
   res.json({ perApp, shared });
 });
 
+// Feature 18: compare two apps side by side — useful for spotting drift
+// between similar services (two Node/Express APIs, say) on tech stack and
+// issue counts. Registered before /:id for the same reason as the other
+// list-level routes.
+router.get('/compare', (req, res) => {
+  const { a, b } = req.query;
+  if (!a || !b) return res.status(400).json({ error: 'a and b (app ids) are required' });
+  const appA = db.getById(a);
+  const appB = db.getById(b);
+  if (!appA || !appB) return res.status(404).json({ error: 'One or both apps not found' });
+
+  function summarize(app) {
+    const latest = history.getLatestSnapshot(app.id);
+    const triageMap = triage.loadTriage(app.id);
+    const bySeverity = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+    if (latest) {
+      for (const issue of latest.issues) {
+        if (triage.isDismissed(triageMap, issue)) continue;
+        bySeverity[issue.severity] = (bySeverity[issue.severity] || 0) + 1;
+      }
+    }
+    const manualTech = (app.techStack || '').split(',').map((t) => t.trim()).filter(Boolean);
+    const detectedTech = latest ? [...(latest.frameworks || []), ...(latest.ecosystems || [])] : [];
+    return {
+      id: app.id,
+      name: app.name,
+      environment: app.environment,
+      owner: app.owner,
+      status: app.status,
+      scannedAt: app.scannedAt,
+      stats: app.stats,
+      bySeverity,
+      tech: [...new Set([...manualTech, ...detectedTech])],
+    };
+  }
+
+  res.json({ a: summarize(appA), b: summarize(appB) });
+});
+
 router.get('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });

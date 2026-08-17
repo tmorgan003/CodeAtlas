@@ -119,8 +119,20 @@
       <button type="button" class="secondary" id="all-issues-btn">View All Issues</button>
       <button type="button" class="secondary" id="tech-stack-btn">View Tech Stack</button>
       <button type="button" class="secondary" id="portfolio-export-btn">Export Portfolio Static Site</button>
+      <button type="button" class="secondary" id="compare-apps-btn">Compare Two Apps</button>
       <p class="form-status" id="portfolio-export-status"></p>
       <div id="dashboard-content"></div>
+    </section>
+
+    <section class="panel" id="compare-panel" hidden>
+      <button id="close-compare" class="link-button">&larr; Back to list</button>
+      <h2>Compare Apps</h2>
+      <div class="diff-picker-row">
+        <label>App A <select id="compare-app-a"></select></label>
+        <label>App B <select id="compare-app-b"></select></label>
+        <button type="button" id="compare-run-btn">Compare</button>
+      </div>
+      <div id="compare-content"></div>
     </section>
 
     <section class="panel" id="tech-stack-panel" hidden>

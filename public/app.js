@@ -533,6 +533,94 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
+// ---- Compare two apps ----
+
+const compareAppsBtn = document.getElementById('compare-apps-btn');
+const comparePanel = document.getElementById('compare-panel');
+const closeCompareBtn = document.getElementById('close-compare');
+const compareContent = document.getElementById('compare-content');
+const compareAppA = document.getElementById('compare-app-a');
+const compareAppB = document.getElementById('compare-app-b');
+const compareRunBtn = document.getElementById('compare-run-btn');
+
+function compareRow(label, valA, valB, differs) {
+  const tr = document.createElement('tr');
+  const labelTd = document.createElement('td');
+  labelTd.textContent = label;
+  labelTd.style.color = 'var(--muted)';
+  const aTd = document.createElement('td');
+  aTd.textContent = valA;
+  const bTd = document.createElement('td');
+  bTd.textContent = valB;
+  if (differs) { aTd.className = bTd.className = 'compare-diff'; }
+  tr.append(labelTd, aTd, bTd);
+  return tr;
+}
+
+async function runCompare() {
+  const idA = compareAppA.value;
+  const idB = compareAppB.value;
+  if (!idA || !idB || idA === idB) {
+    compareContent.innerHTML = '<p class="empty-state">Pick two different apps.</p>';
+    return;
+  }
+  compareContent.innerHTML = '<p>Loading…</p>';
+  try {
+    const { a, b } = await fetch(`/api/apps/compare?a=${idA}&b=${idB}`).then((r) => r.json());
+    const table = document.createElement('table');
+    const head = document.createElement('tr');
+    head.innerHTML = `<th></th><th>${a.name}</th><th>${b.name}</th>`;
+    table.appendChild(head);
+    table.appendChild(compareRow('Environment', a.environment || '—', b.environment || '—', a.environment !== b.environment));
+    table.appendChild(compareRow('Owner / Team', a.owner || '—', b.owner || '—', a.owner !== b.owner));
+    table.appendChild(compareRow('Status', a.status, b.status, a.status !== b.status));
+    table.appendChild(compareRow('Last Scanned', a.scannedAt ? new Date(a.scannedAt).toLocaleString() : '—', b.scannedAt ? new Date(b.scannedAt).toLocaleString() : '—', false));
+    const sA = a.stats || {}, sB = b.stats || {};
+    table.appendChild(compareRow('Units', sA.units ?? '—', sB.units ?? '—', sA.units !== sB.units));
+    table.appendChild(compareRow('Models', sA.models ?? '—', sB.models ?? '—', sA.models !== sB.models));
+    table.appendChild(compareRow('Routes', sA.routes ?? '—', sB.routes ?? '—', sA.routes !== sB.routes));
+    table.appendChild(compareRow('Active Issues', sA.issues ?? '—', sB.issues ?? '—', sA.issues !== sB.issues));
+    for (const sev of SEVERITY_ORDER) {
+      table.appendChild(compareRow(`  ${sev}`, a.bySeverity[sev], b.bySeverity[sev], a.bySeverity[sev] !== b.bySeverity[sev]));
+    }
+    const sharedTech = a.tech.filter((t) => b.tech.includes(t));
+    table.appendChild(compareRow('Tech Stack', a.tech.join(', ') || '—', b.tech.join(', ') || '—', false));
+
+    const scroll = document.createElement('div');
+    scroll.className = 'table-scroll';
+    scroll.appendChild(table);
+    compareContent.innerHTML = '';
+    if (sharedTech.length) {
+      const note = document.createElement('p');
+      note.style.color = 'var(--muted)';
+      note.style.fontSize = '0.82rem';
+      note.textContent = `Shared: ${sharedTech.join(', ')}. Highlighted rows above differ between the two apps.`;
+      compareContent.appendChild(note);
+    }
+    compareContent.appendChild(scroll);
+  } catch (err) {
+    compareContent.textContent = 'Could not compare: ' + err.message;
+  }
+}
+
+compareAppsBtn.addEventListener('click', () => {
+  listPanel.hidden = true;
+  detailPanel.hidden = true;
+  comparePanel.hidden = false;
+  const options = allApps.map((a) => `<option value="${a.id}">${a.name}</option>`).join('');
+  compareAppA.innerHTML = options;
+  compareAppB.innerHTML = options;
+  if (allApps.length > 1) compareAppB.selectedIndex = 1;
+  compareContent.innerHTML = '';
+});
+
+closeCompareBtn.addEventListener('click', () => {
+  comparePanel.hidden = true;
+  listPanel.hidden = false;
+});
+
+compareRunBtn.addEventListener('click', runCompare);
+
 // ---- Portfolio-level static site export ----
 
 const portfolioExportBtn = document.getElementById('portfolio-export-btn');
