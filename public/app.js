@@ -542,6 +542,44 @@ async function openDetail(id) {
     detailMeta.append(...fieldRow('Tags', (app.tags || []).join(', ')));
     detailMeta.append(...fieldRow('Notes', app.notes));
     detailMeta.append(...fieldRow('Scan Mode', app.scanMode === 'deep' ? 'Deep (LLM-assisted)' : 'Static (fast, pattern-based)'));
+
+    // Feature 6: the CLI's --fail-on gating threshold, surfaced here as an
+    // editable per-app setting instead of CLI-only, with a live pass/fail
+    // readout against the latest scan so the setting isn't just inert text.
+    const gateDt = document.createElement('dt');
+    gateDt.textContent = 'CI Gate Severity';
+    const gateDd = document.createElement('dd');
+    const gateSelect = document.createElement('select');
+    gateSelect.className = 'gate-select';
+    for (const s of ['Critical', 'High', 'Medium', 'Low']) {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      if (s === (app.failOnSeverity || 'Critical')) opt.selected = true;
+      gateSelect.appendChild(opt);
+    }
+    const gateStatus = document.createElement('span');
+    gateStatus.className = 'gate-status';
+    async function refreshGateStatus() {
+      if (app.status !== 'Done') { gateStatus.textContent = ''; return; }
+      gateStatus.textContent = 'Checking…';
+      gateStatus.className = 'gate-status';
+      const issues = await api(`/${id}/issues`);
+      const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+      const threshold = order[gateSelect.value];
+      const active = issues.filter((i) => i.triage.state !== 'false_positive' && i.triage.state !== 'fixed');
+      const failing = active.some((i) => order[i.severity] <= threshold);
+      gateStatus.textContent = failing ? 'Would FAIL CI' : 'Would PASS CI';
+      gateStatus.className = 'gate-status ' + (failing ? 'gate-fail' : 'gate-pass');
+    }
+    gateSelect.addEventListener('change', async () => {
+      await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ failOnSeverity: gateSelect.value }) });
+      refreshGateStatus();
+    });
+    gateDd.append(gateSelect, document.createTextNode(' '), gateStatus);
+    detailMeta.append(gateDt, gateDd);
+    refreshGateStatus();
+
     detailMeta.append(...fieldRow('Auto-rescan', SCHEDULE_LABELS[app.scheduleMinutes] || `Every ${app.scheduleMinutes} min`));
     detailMeta.append(...fieldRow('Notify Webhook', app.notifyWebhookUrl || '—'));
     detailMeta.append(...badgeFieldRow('Status', app.status, statusClass(app.status), 'status-badge'));

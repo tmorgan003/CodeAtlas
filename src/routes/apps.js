@@ -115,18 +115,18 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl } = req.body || {};
+  const { name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity } = req.body || {};
   if (!name || !pathOrRepo) {
     return res.status(400).json({ error: 'name and pathOrRepo are required' });
   }
-  const entry = db.create({ name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl });
+  const entry = db.create({ name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity });
   res.status(201).json(entry);
 });
 
 router.patch('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
-  const { purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl } = req.body || {};
+  const { purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity } = req.body || {};
   const patch = {};
   if (purpose !== undefined) patch.purpose = purpose;
   if (owner !== undefined) patch.owner = owner;
@@ -137,6 +137,10 @@ router.patch('/:id', (req, res) => {
   if (tags !== undefined) patch.tags = Array.isArray(tags) ? tags : String(tags).split(',').map((t) => t.trim()).filter(Boolean);
   if (scheduleMinutes !== undefined) patch.scheduleMinutes = Number(scheduleMinutes) > 0 ? Number(scheduleMinutes) : 0;
   if (notifyWebhookUrl !== undefined) patch.notifyWebhookUrl = notifyWebhookUrl;
+  if (failOnSeverity !== undefined) {
+    if (!db.GATE_SEVERITIES.has(failOnSeverity)) return res.status(400).json({ error: `failOnSeverity must be one of: ${[...db.GATE_SEVERITIES].join(', ')}` });
+    patch.failOnSeverity = failOnSeverity;
+  }
   const updated = db.update(app.id, patch);
   res.json(updated);
 });

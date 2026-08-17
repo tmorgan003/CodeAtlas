@@ -310,6 +310,10 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
 .issue-detail { margin: 0.3rem 0; grid-template-columns: 120px 1fr; }
 .issue-detail dd { white-space: pre-wrap; }
 .issue-detail dd input { max-width: 320px; margin-top: 0; }
+.gate-select { width: auto; display: inline-block; margin-top: 0; }
+.gate-status { font-size: 0.8rem; font-weight: 600; }
+.gate-status.gate-pass { color: var(--ok); }
+.gate-status.gate-fail { color: var(--err); }
 .assignee-chip {
   margin-top: 0.3rem;
   font-size: 0.72rem;

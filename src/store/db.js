@@ -4,6 +4,10 @@ const crypto = require('crypto');
 
 const DB_PATH = path.join(__dirname, '..', '..', 'data', 'apps.json');
 
+// Mirrors cli.js's SEVERITY_ORDER keys — the CLI's --fail-on gating
+// threshold, now also settable per app from the UI instead of CLI-only.
+const GATE_SEVERITIES = new Set(['Critical', 'High', 'Medium', 'Low']);
+
 function ensureDb() {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
   if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, '[]', 'utf8');
@@ -44,6 +48,7 @@ function create(fields) {
     scanMode: fields.scanMode === 'deep' ? 'deep' : 'static',
     scheduleMinutes: Number(fields.scheduleMinutes) > 0 ? Number(fields.scheduleMinutes) : 0,
     notifyWebhookUrl: fields.notifyWebhookUrl || '',
+    failOnSeverity: GATE_SEVERITIES.has(fields.failOnSeverity) ? fields.failOnSeverity : 'Critical',
     status: 'Not Started',
     wikiLink: null,
     localPath: null,
@@ -74,4 +79,4 @@ function remove(id) {
   return next.length !== apps.length;
 }
 
-module.exports = { loadAll, getById, create, update, remove };
+module.exports = { loadAll, getById, create, update, remove, GATE_SEVERITIES };
