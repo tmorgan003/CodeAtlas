@@ -74,6 +74,39 @@ router.get('/dashboard', (req, res) => {
   res.json({ totalApps: apps.length, byStatus, byEnvironment, bySeverity, totalActiveIssues, staleApps, staleDaysThreshold: STALE_DAYS });
 });
 
+// Portfolio scan calendar: when is every app next due for an auto-rescan.
+// Apps opt into scheduling via scheduleMinutes (see scheduler.js); an app
+// with no schedule set has no next-due date and is surfaced separately so
+// it doesn't get lost among ones actually on a cadence. Registered before
+// /:id for the same reason as the other list-level routes.
+router.get('/calendar', (req, res) => {
+  const apps = db.loadAll().filter((a) => !a.archived);
+  const now = Date.now();
+  const scheduled = [];
+  const unscheduled = [];
+
+  for (const app of apps) {
+    if (!app.scheduleMinutes || app.scheduleMinutes <= 0) {
+      unscheduled.push({ id: app.id, name: app.name, environment: app.environment, scannedAt: app.scannedAt });
+      continue;
+    }
+    const lastScan = app.scannedAt ? new Date(app.scannedAt).getTime() : null;
+    const nextDueAt = lastScan === null ? now : lastScan + app.scheduleMinutes * 60 * 1000;
+    scheduled.push({
+      id: app.id,
+      name: app.name,
+      environment: app.environment,
+      scheduleMinutes: app.scheduleMinutes,
+      scannedAt: app.scannedAt,
+      nextDueAt: new Date(nextDueAt).toISOString(),
+      overdue: nextDueAt <= now && app.status !== 'Scanning' && app.status !== 'Queued',
+    });
+  }
+
+  scheduled.sort((a, b) => new Date(a.nextDueAt).getTime() - new Date(b.nextDueAt).getTime());
+  res.json({ scheduled, unscheduled });
+});
+
 // Bulk registration: one app per line, either a bare path/repo (name is
 // derived from the last path segment) or a CSV row
 // "name,pathOrRepo,environment,owner,tags". Lets a team register a dozen

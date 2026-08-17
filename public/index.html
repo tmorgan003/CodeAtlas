@@ -137,8 +137,16 @@
       <button type="button" class="secondary" id="tech-stack-btn">View Tech Stack</button>
       <button type="button" class="secondary" id="portfolio-export-btn">Export Portfolio Static Site</button>
       <button type="button" class="secondary" id="compare-apps-btn">Compare Two Apps</button>
+      <button type="button" class="secondary" id="scan-calendar-btn">Scan Calendar</button>
       <p class="form-status" id="portfolio-export-status"></p>
       <div id="dashboard-content"></div>
+    </section>
+
+    <section class="panel" id="scan-calendar-panel" hidden>
+      <button id="close-scan-calendar" class="link-button">&larr; Back to list</button>
+      <h2>Scan Calendar</h2>
+      <p style="color:var(--muted);font-size:0.85rem">When every auto-rescan-enabled app is next due. Apps without an Auto-rescan interval set aren't on a cadence and are listed separately below.</p>
+      <div id="scan-calendar-content"></div>
     </section>
 
     <section class="panel" id="compare-panel" hidden>

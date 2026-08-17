@@ -739,6 +739,104 @@ closeTechStackBtn.addEventListener('click', () => {
   listPanel.hidden = false;
 });
 
+// ---- Scan calendar ----
+
+const scanCalendarBtn = document.getElementById('scan-calendar-btn');
+const scanCalendarPanel = document.getElementById('scan-calendar-panel');
+const closeScanCalendarBtn = document.getElementById('close-scan-calendar');
+const scanCalendarContent = document.getElementById('scan-calendar-content');
+
+function formatDueIn(nextDueAt) {
+  const diffMs = new Date(nextDueAt).getTime() - Date.now();
+  const diffHours = diffMs / 3600000;
+  if (diffHours < -1) return `${Math.round(-diffHours)}h overdue`;
+  if (diffHours < 0) return 'due now';
+  if (diffHours < 1) return 'due within the hour';
+  if (diffHours < 24) return `due in ${Math.round(diffHours)}h`;
+  return `due in ${Math.round(diffHours / 24)}d`;
+}
+
+function scanCalendarRow(entry) {
+  const li = document.createElement('li');
+  li.className = 'stale-item';
+  const link = document.createElement('a');
+  link.href = '#';
+  link.textContent = entry.name;
+  link.style.color = 'var(--accent-text)';
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    scanCalendarPanel.hidden = true;
+    openDetail(entry.id);
+  });
+  const when = document.createElement('span');
+  when.className = 'stale-age';
+  when.textContent = `${new Date(entry.nextDueAt).toLocaleString()} — ${formatDueIn(entry.nextDueAt)}`;
+  if (entry.overdue) when.style.color = 'var(--err)';
+  li.append(link, when);
+  return li;
+}
+
+async function loadScanCalendar() {
+  scanCalendarContent.innerHTML = '<p>Loading…</p>';
+  try {
+    const { scheduled, unscheduled } = await fetch('/api/apps/calendar').then((r) => r.json());
+    scanCalendarContent.innerHTML = '';
+
+    if (scheduled.length) {
+      const overdueCount = scheduled.filter((e) => e.overdue).length;
+      if (overdueCount) {
+        const note = document.createElement('p');
+        note.className = 'scan-queue-note';
+        note.style.color = 'var(--err)';
+        note.textContent = `${overdueCount} app(s) overdue for their scheduled rescan.`;
+        scanCalendarContent.appendChild(note);
+      }
+      const list = document.createElement('ul');
+      list.className = 'stale-list';
+      for (const entry of scheduled) list.appendChild(scanCalendarRow(entry));
+      scanCalendarContent.appendChild(list);
+    } else {
+      scanCalendarContent.innerHTML = '<p class="empty-state">No apps have an Auto-rescan interval set.</p>';
+    }
+
+    if (unscheduled.length) {
+      const heading = document.createElement('p');
+      heading.className = 'dashboard-subheading';
+      heading.textContent = `Not on a schedule (${unscheduled.length}):`;
+      scanCalendarContent.appendChild(heading);
+      const row = document.createElement('div');
+      row.className = 'severity-chip-row';
+      for (const entry of unscheduled) {
+        const chip = document.createElement('a');
+        chip.href = '#';
+        chip.className = 'tag-badge tech-app-chip';
+        chip.textContent = entry.name;
+        chip.addEventListener('click', (e) => {
+          e.preventDefault();
+          scanCalendarPanel.hidden = true;
+          openDetail(entry.id);
+        });
+        row.appendChild(chip);
+      }
+      scanCalendarContent.appendChild(row);
+    }
+  } catch (err) {
+    scanCalendarContent.textContent = 'Could not load scan calendar: ' + err.message;
+  }
+}
+
+scanCalendarBtn.addEventListener('click', async () => {
+  listPanel.hidden = true;
+  detailPanel.hidden = true;
+  scanCalendarPanel.hidden = false;
+  await loadScanCalendar();
+});
+
+closeScanCalendarBtn.addEventListener('click', () => {
+  scanCalendarPanel.hidden = true;
+  listPanel.hidden = false;
+});
+
 // ---- Cross-app issue view ----
 
 const allIssuesBtn = document.getElementById('all-issues-btn');
