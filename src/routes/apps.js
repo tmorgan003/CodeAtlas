@@ -5,6 +5,7 @@ const db = require('../store/db');
 const history = require('../scanner/history');
 const triage = require('../scanner/triage');
 const dictionaryOverrides = require('../scanner/dictionaryOverrides');
+const envVarOverrides = require('../scanner/envVarOverrides');
 const graph = require('../scanner/graph');
 const { searchWiki } = require('../scanner/wikiSearch');
 const progressBus = require('../scanner/progressBus');
@@ -341,6 +342,26 @@ router.post('/:id/models/override', (req, res) => {
   if (!modelName || !fieldName) return res.status(400).json({ error: 'modelName and fieldName are required' });
   const saved = dictionaryOverrides.setOverride(app.id, modelName, fieldName, description || '');
   res.json({ modelName, fieldName, description: saved });
+});
+
+// Feature 13: env vars referenced in code, merged with any human-written
+// descriptions, for the editable Setup tab UI.
+router.get('/:id/env-vars', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const latest = history.getLatestSnapshot(app.id);
+  if (!latest) return res.json([]);
+  const overrides = envVarOverrides.loadOverrides(app.id);
+  res.json((latest.envVars || []).map((name) => ({ name, description: overrides[name] || '' })));
+});
+
+router.post('/:id/env-vars/override', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { name, description } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  const saved = envVarOverrides.setOverride(app.id, name, description || '');
+  res.json({ name, description: saved });
 });
 
 // Resolved import graph for the latest scan, for the frontend's graph view.

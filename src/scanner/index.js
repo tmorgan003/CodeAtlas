@@ -266,6 +266,10 @@ async function runScan(rootPath, meta, onProgress) {
       // relying only on the free-text techStack field.
       frameworks: structureInfo.frameworks,
       ecosystems: [...new Set(structureInfo.manifests.map((m) => m.ecosystem))],
+      // Feature 13: persisted so the Setup tab's env var list can be shown
+      // (and annotated) through the interactive API instead of only as a
+      // static Setup.md bullet list.
+      envVars: [...ctx.envVars].sort(),
     };
     const previous = history.getLatestSnapshot(meta.appId);
     diff = history.diffSnapshots(previous, snapshot);

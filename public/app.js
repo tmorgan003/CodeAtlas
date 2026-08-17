@@ -933,6 +933,7 @@ function renderWikiNav(id, app) {
   const tools = [
     ['Issues', () => loadIssuesInteractive(id)],
     ['Data Dictionary', () => loadDictionaryInteractive(id)],
+    ['Env Vars', () => loadEnvVarsInteractive(id)],
     ['Dependency Graph', () => loadGraphView(id)],
     ['History', () => loadHistory(id)],
   ];
@@ -1156,6 +1157,58 @@ async function loadDictionaryInteractive(id) {
     });
   } catch (err) {
     wikiView.textContent = 'Could not load data dictionary: ' + err.message;
+  }
+}
+
+// Feature 13: same edit-and-save-on-blur pattern as the Data Dictionary,
+// applied to the env vars the scanner found referenced in code (Setup.md
+// only ever listed the bare names — this lets a user annotate what each
+// one is actually for, surviving future rescans).
+async function loadEnvVarsInteractive(id) {
+  try {
+    const vars = await api(`/${id}/env-vars`);
+    if (!vars.length) {
+      withViewTransition(() => {
+        wikiView.innerHTML = '<h2>Environment Variables</h2><p>Edit a description and click away (or press Enter) to save. Your edits survive future rescans.</p><p>No environment variables detected in the latest scan.</p>';
+      });
+      return;
+    }
+    withViewTransition(() => {
+      wikiView.innerHTML = '<h2>Environment Variables</h2><p>Edit a description and click away (or press Enter) to save. Your edits survive future rescans. Values are never shown here — populate them from your own secrets store.</p>';
+      const table = document.createElement('table');
+      table.innerHTML = '<tr><th>Variable</th><th>Description</th></tr>';
+      for (const v of vars) {
+        const tr = document.createElement('tr');
+        const nameTd = document.createElement('td');
+        const code = document.createElement('code');
+        code.textContent = v.name;
+        nameTd.appendChild(code);
+        const descTd = document.createElement('td');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = v.description || '';
+        input.placeholder = 'What is this used for?';
+        const editedBadge = document.createElement('span');
+        editedBadge.className = 'override-badge';
+        editedBadge.textContent = 'Edited';
+        editedBadge.hidden = !v.description;
+        const save = async () => {
+          await api(`/${id}/env-vars/override`, { method: 'POST', body: JSON.stringify({ name: v.name, description: input.value }) });
+          editedBadge.hidden = !input.value;
+        };
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+        descTd.append(input, editedBadge);
+        tr.append(nameTd, descTd);
+        table.appendChild(tr);
+      }
+      const scroll = document.createElement('div');
+      scroll.className = 'table-scroll';
+      scroll.appendChild(table);
+      wikiView.appendChild(scroll);
+    });
+  } catch (err) {
+    wikiView.textContent = 'Could not load environment variables: ' + err.message;
   }
 }
 
