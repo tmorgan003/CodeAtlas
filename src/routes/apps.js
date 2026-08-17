@@ -7,6 +7,7 @@ const triage = require('../scanner/triage');
 const dictionaryOverrides = require('../scanner/dictionaryOverrides');
 const owners = require('../store/owners');
 const envVarOverrides = require('../scanner/envVarOverrides');
+const customIgnore = require('../scanner/customIgnore');
 const graph = require('../scanner/graph');
 const { searchWiki } = require('../scanner/wikiSearch');
 const progressBus = require('../scanner/progressBus');
@@ -454,6 +455,44 @@ router.post('/:id/env-vars/override', (req, res) => {
   if (!name) return res.status(400).json({ error: 'name is required' });
   const saved = envVarOverrides.setOverride(app.id, name, description || '');
   res.json({ name, description: saved });
+});
+
+// Feature: per-app custom ignore patterns (glob-style), editable from the
+// UI instead of requiring a scanner source-code change. Applied on the next
+// scan — see src/scanner/customIgnore.js and its use in scanner/index.js.
+router.get('/:id/ignore-patterns', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  res.json(customIgnore.loadPatterns(app.id));
+});
+
+router.post('/:id/ignore-patterns', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { pattern } = req.body || {};
+  try {
+    res.status(201).json(customIgnore.addPattern(app.id, pattern));
+  } catch (err) {
+    res.status(400).json({ error: String((err && err.message) || err) });
+  }
+});
+
+router.patch('/:id/ignore-patterns', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { oldPattern, newPattern } = req.body || {};
+  if (!oldPattern) return res.status(400).json({ error: 'oldPattern is required' });
+  try {
+    res.json(customIgnore.renamePattern(app.id, oldPattern, newPattern));
+  } catch (err) {
+    res.status(400).json({ error: String((err && err.message) || err) });
+  }
+});
+
+router.delete('/:id/ignore-patterns/:pattern', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  res.json(customIgnore.removePattern(app.id, req.params.pattern));
 });
 
 // Resolved import graph for the latest scan, for the frontend's graph view.

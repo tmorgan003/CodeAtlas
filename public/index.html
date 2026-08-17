@@ -232,6 +232,19 @@
         </form>
       </details>
 
+      <details id="ignore-patterns-details">
+        <summary><h3>Ignore Patterns</h3></summary>
+        <div class="ignore-patterns-manage">
+          <p class="bulk-help">Glob-style patterns (e.g. <code>tests/**</code>, <code>**/*.generated.js</code>) matched against each file's path relative to the scan root — matching files are skipped entirely on the next scan.</p>
+          <div class="path-input-row">
+            <input type="text" id="ignore-pattern-new-input" placeholder="e.g. **/*.spec.js" />
+            <button type="button" id="ignore-pattern-add-btn">Add</button>
+          </div>
+          <p class="form-status" id="ignore-pattern-status"></p>
+          <table id="ignore-patterns-table"><tr><th>Pattern</th><th></th></tr></table>
+        </div>
+      </details>
+
       <div id="wiki-nav" class="wiki-nav" hidden>
         <span>Wiki:</span>
         <div id="wiki-links"></div>

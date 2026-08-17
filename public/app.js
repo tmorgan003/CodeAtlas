@@ -968,6 +968,79 @@ ownerNewInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.pr
 
 loadOwners();
 
+// ---- Ignore patterns (per app, glob-style) ----
+
+const ignorePatternsTable = document.getElementById('ignore-patterns-table');
+const ignorePatternNewInput = document.getElementById('ignore-pattern-new-input');
+const ignorePatternAddBtn = document.getElementById('ignore-pattern-add-btn');
+const ignorePatternStatus = document.getElementById('ignore-pattern-status');
+
+function renderIgnorePatterns(appId, patterns) {
+  ignorePatternsTable.innerHTML = '<tr><th>Pattern</th><th></th></tr>';
+  for (const pattern of patterns) {
+    const tr = document.createElement('tr');
+    const patternTd = document.createElement('td');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = pattern;
+    input.addEventListener('blur', async () => {
+      const newPattern = input.value.trim();
+      if (!newPattern || newPattern === pattern) { input.value = pattern; return; }
+      const updated = await fetch(`/api/apps/${appId}/ignore-patterns`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPattern: pattern, newPattern }),
+      }).then((r) => r.json());
+      renderIgnorePatterns(appId, updated);
+    });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+    patternTd.appendChild(input);
+    const actionTd = document.createElement('td');
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'secondary';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', async () => {
+      const updated = await fetch(`/api/apps/${appId}/ignore-patterns/${encodeURIComponent(pattern)}`, { method: 'DELETE' }).then((r) => r.json());
+      renderIgnorePatterns(appId, updated);
+    });
+    actionTd.appendChild(removeBtn);
+    tr.append(patternTd, actionTd);
+    ignorePatternsTable.appendChild(tr);
+  }
+}
+
+async function loadIgnorePatterns(appId) {
+  const patterns = await fetch(`/api/apps/${appId}/ignore-patterns`).then((r) => r.json());
+  renderIgnorePatterns(appId, patterns);
+}
+
+ignorePatternAddBtn.addEventListener('click', async () => {
+  if (!currentDetailId) return;
+  const pattern = ignorePatternNewInput.value.trim();
+  if (!pattern) return;
+  ignorePatternStatus.classList.remove('success', 'error');
+  try {
+    const updated = await fetch(`/api/apps/${currentDetailId}/ignore-patterns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pattern }),
+    }).then((r) => {
+      if (!r.ok) return r.json().then((b) => { throw new Error(b.error || `Request failed (${r.status})`); });
+      return r.json();
+    });
+    renderIgnorePatterns(currentDetailId, updated);
+    ignorePatternNewInput.value = '';
+    ignorePatternStatus.textContent = `Added "${pattern}". Takes effect on the next scan.`;
+    ignorePatternStatus.classList.add('success');
+    setTimeout(() => { ignorePatternStatus.textContent = ''; ignorePatternStatus.classList.remove('success'); }, 3000);
+  } catch (err) {
+    ignorePatternStatus.textContent = 'Error: ' + err.message;
+    ignorePatternStatus.classList.add('error');
+  }
+});
+ignorePatternNewInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ignorePatternAddBtn.click(); } });
+
 // ---- Detail view ----
 
 function fieldRow(label, value) {
@@ -1118,6 +1191,8 @@ async function openDetail(id) {
 
     wikiView.innerHTML = '';
   });
+
+  loadIgnorePatterns(id);
 
   if (app.status === 'Done' && app.wikiLink) {
     closeScanStream();

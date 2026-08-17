@@ -9,6 +9,7 @@ const { scanFile, checkKnownVulnerableDeps, findDeadCode } = require('./issues')
 const { runNpmAudit } = require('./npmAudit');
 const { buildEnrichment } = require('./deepMode');
 const { CODE_EXTENSIONS, BINARY_EXTENSIONS, SKIP_FILES } = require('./ignore');
+const customIgnore = require('./customIgnore');
 const { cacheKeyFor, hashContent, loadCache, saveCache } = require('./cache');
 const history = require('./history');
 const triage = require('./triage');
@@ -45,6 +46,7 @@ function applyResult(ctx, result) {
 function processFile(relPath, absPath, ext, ctx, cacheState) {
   const baseName = path.basename(relPath);
   if (BINARY_EXTENSIONS.has(ext) || SKIP_FILES.has(baseName)) return null;
+  if (ctx.shouldIgnore && ctx.shouldIgnore(relPath)) return null;
 
   const { cache, newCache } = cacheState;
   let stat;
@@ -133,7 +135,16 @@ async function runScan(rootPath, meta, onProgress) {
   unitNames.forEach((u) => { statusMap[u] = 'Not Started'; });
   wiki.initProgress(wikiDir, unitNames);
 
-  const ctx = { allFileComponents: [], allModels: [], allRoutes: [], allIssues: [], envVars: new Set() };
+  // Feature: per-app custom ignore patterns (glob, edited from the UI). The
+  // root app id is threaded through sub-package recursion (below) unchanged,
+  // so a pattern set on the parent app also applies inside monorepo
+  // sub-package scans, which otherwise run under their own synthetic id.
+  const rootAppId = meta._rootAppId || meta.appId;
+  const customPatterns = rootAppId ? customIgnore.loadPatterns(rootAppId) : [];
+  const ctx = {
+    allFileComponents: [], allModels: [], allRoutes: [], allIssues: [], envVars: new Set(),
+    shouldIgnore: customPatterns.length ? (relPath) => customIgnore.matchesAnyPattern(relPath, customPatterns) : null,
+  };
 
   const cacheKey = cacheKeyFor(meta.appId, rootPath);
   const cacheState = { cache: loadCache(cacheKey), newCache: {}, hits: 0, misses: 0 };
@@ -190,6 +201,7 @@ async function runScan(rootPath, meta, onProgress) {
         name: meta.name ? `${meta.name} / ${pkg.name}` : pkg.name,
         appId: meta.appId ? `${meta.appId}__${pkg.relPath.replace(/\//g, '-')}` : undefined,
         _monorepoDepth: monorepoDepth + 1,
+        _rootAppId: rootAppId,
       };
       const subResult = await runScan(pkg.absPath, subMeta, onProgress);
       packages.push({ name: pkg.name, wikiLink: `../${pkg.relPath}/wiki/Home.md`, stats: subResult.stats, error: null });

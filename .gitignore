@@ -7,6 +7,7 @@ data/history/
 data/triage/
 data/dictionary-overrides/
 data/env-var-overrides/
+data/ignore-patterns/
 data/graphs/
 data/wiki-exports/
 data/portfolio-export/
