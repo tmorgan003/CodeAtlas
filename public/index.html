@@ -51,12 +51,12 @@
             <input type="text" name="owner" placeholder="e.g. Platform Team" />
           </label>
           <label>Environment
-            <select name="environment">
-              <option value="">Select...</option>
-              <option>Production</option>
-              <option>Staging</option>
-              <option>Internal</option>
-            </select>
+            <input type="text" name="environment" list="environment-options" placeholder="e.g. Production, QA, Dev, DR" autocomplete="off" />
+            <datalist id="environment-options">
+              <option value="Production"></option>
+              <option value="Staging"></option>
+              <option value="Internal"></option>
+            </datalist>
           </label>
         </div>
         <label>Tech Stack

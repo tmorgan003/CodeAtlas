@@ -267,6 +267,7 @@ function populateFilterOptions(apps) {
   };
   rebuild(filterEnvironment, [...new Set(apps.map((a) => a.environment).filter(Boolean))].sort(), 'All environments');
   rebuild(filterOwner, [...new Set(apps.map((a) => a.owner).filter(Boolean))].sort(), 'All owners');
+  updateEnvironmentSuggestions(apps);
 }
 
 function applyFilters() {
@@ -424,14 +425,26 @@ function attachScanStream(id) {
 // this app is added — Production/Staging pick up the color they'll wear in
 // the table and detail panel; Internal (and blank) stay neutral, matching
 // env-badge's own restraint (lowest stakes earns no accent).
-const envSelect = form.querySelector('select[name="environment"]');
+const envSelect = form.querySelector('input[name="environment"]');
+const environmentOptions = document.getElementById('environment-options');
 const ENV_SELECT_CLASS = { Production: 'env-select-production', Staging: 'env-select-staging' };
 function updateEnvSelectColor() {
   envSelect.classList.remove('env-select-production', 'env-select-staging');
   const cls = ENV_SELECT_CLASS[envSelect.value];
   if (cls) envSelect.classList.add(cls);
 }
-envSelect.addEventListener('change', updateEnvSelectColor);
+envSelect.addEventListener('input', updateEnvSelectColor);
+
+// Teams can type any environment name (QA, Dev, DR, ...) instead of being
+// locked to Production/Staging/Internal — the datalist just surfaces the
+// three defaults plus whatever custom values are already in use, as
+// autocomplete suggestions, not a restriction.
+function updateEnvironmentSuggestions(apps) {
+  const custom = [...new Set(apps.map((a) => a.environment).filter(Boolean))];
+  const defaults = ['Production', 'Staging', 'Internal'];
+  const all = [...new Set([...defaults, ...custom])];
+  environmentOptions.innerHTML = all.map((v) => `<option value="${v}"></option>`).join('');
+}
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
