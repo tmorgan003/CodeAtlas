@@ -1623,6 +1623,77 @@ async function loadOnboardingChecklist(appId) {
   renderOnboardingChecklist(appId, checklist);
 }
 
+// ---- Public read-only share link ----
+
+async function loadShareStatus(appId, container) {
+  try {
+    const { enabled, token } = await fetch(`/api/apps/${appId}/share`).then((r) => r.json());
+    renderShareStatus(appId, container, enabled, token);
+  } catch (err) {
+    container.textContent = 'Could not load share status: ' + err.message;
+  }
+}
+
+function renderShareStatus(appId, container, enabled, token) {
+  container.innerHTML = '';
+  const canManage = hasRole('admin');
+
+  if (!enabled) {
+    const note = document.createElement('span');
+    note.style.color = 'var(--muted)';
+    note.textContent = 'Not shared. ';
+    const enableBtn = document.createElement('button');
+    enableBtn.type = 'button';
+    enableBtn.className = 'secondary';
+    enableBtn.textContent = 'Enable Sharing';
+    enableBtn.disabled = !canManage;
+    if (!canManage) enableBtn.title = 'Requires the "admin" role or higher.';
+    enableBtn.addEventListener('click', async () => {
+      const res = await fetch(`/api/apps/${appId}/share`, { method: 'POST' });
+      const body = await res.json();
+      if (!res.ok) { container.textContent = 'Error: ' + body.error; return; }
+      renderShareStatus(appId, container, true, body.token);
+    });
+    container.append(note, enableBtn);
+    return;
+  }
+
+  const url = `${location.origin}/share.html?token=${token}`;
+  const urlInput = document.createElement('input');
+  urlInput.type = 'text';
+  urlInput.readOnly = true;
+  urlInput.value = url;
+  urlInput.style.width = '55%';
+  urlInput.addEventListener('click', () => urlInput.select());
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'secondary';
+  copyBtn.textContent = 'Copy';
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+    } catch {
+      urlInput.select();
+    }
+  });
+
+  const revokeBtn = document.createElement('button');
+  revokeBtn.type = 'button';
+  revokeBtn.className = 'secondary';
+  revokeBtn.textContent = 'Revoke';
+  revokeBtn.disabled = !canManage;
+  if (!canManage) revokeBtn.title = 'Requires the "admin" role or higher.';
+  revokeBtn.addEventListener('click', async () => {
+    await fetch(`/api/apps/${appId}/share`, { method: 'DELETE' });
+    renderShareStatus(appId, container, false, null);
+  });
+
+  container.append(urlInput, document.createTextNode(' '), copyBtn, document.createTextNode(' '), revokeBtn);
+}
+
 // ---- Detail view ----
 
 function fieldRow(label, value) {
@@ -1835,6 +1906,18 @@ async function openDetail(id) {
       archiveDd.appendChild(note);
     }
     detailMeta.append(archiveDt, archiveDd);
+
+    // Public read-only share link — unauthenticated, scoped to just this
+    // app's wiki (see src/routes/share.js). Generating/revoking requires
+    // admin, same weight as the other admin-only actions.
+    const shareDt = document.createElement('dt');
+    shareDt.textContent = 'Public Share Link';
+    const shareDd = document.createElement('dd');
+    const shareStatus = document.createElement('span');
+    shareStatus.textContent = 'Loading…';
+    shareDd.appendChild(shareStatus);
+    detailMeta.append(shareDt, shareDd);
+    loadShareStatus(id, shareDd);
 
     detailMeta.append(...fieldRow('Wiki Location', app.wikiLink));
     detailMeta.append(...fieldRow('Last Scanned', app.scannedAt ? new Date(app.scannedAt).toLocaleString() : ''));

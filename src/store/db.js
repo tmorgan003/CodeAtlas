@@ -64,6 +64,7 @@ function create(fields) {
     trackerToken: fields.trackerToken || '',
     gitRef: fields.gitRef || '',
     lastScannedRef: null,
+    shareToken: null,
     archived: false,
     status: 'Not Started',
     wikiLink: null,

@@ -4,6 +4,7 @@ const appsRouter = require('./src/routes/apps');
 const browseRouter = require('./src/routes/browse');
 const ownersRouter = require('./src/routes/owners');
 const authRouter = require('./src/routes/auth');
+const shareRouter = require('./src/routes/share');
 const { attachUser } = require('./src/middleware/auth');
 const { startScheduler } = require('./src/scheduler');
 
@@ -17,6 +18,7 @@ app.use('/api/apps', appsRouter);
 app.use('/api/browse', browseRouter);
 app.use('/api/owners', ownersRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/share', shareRouter);
 
 app.listen(PORT, () => {
   console.log(`CodeAtlas running at http://localhost:${PORT}`);

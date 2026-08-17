@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const db = require('../store/db');
 const history = require('../scanner/history');
 const triage = require('../scanner/triage');
@@ -13,6 +14,7 @@ const customWikiSections = require('../scanner/customWikiSections');
 const suppressionRules = require('../scanner/suppressionRules');
 const onboarding = require('../scanner/onboarding');
 const wikiOverrides = require('../scanner/wikiOverrides');
+const { resolveWikiFile } = require('../scanner/wikiFileResolver');
 const graph = require('../scanner/graph');
 const { searchWiki } = require('../scanner/wikiSearch');
 const progressBus = require('../scanner/progressBus');
@@ -414,42 +416,9 @@ router.get('/:id/scan-stream', (req, res) => {
 router.get('/:id/wiki-file', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app || !app.localPath) return res.status(404).json({ error: 'Wiki not available for this app yet' });
-
-  const wikiDir = path.join(app.localPath, 'wiki');
-  const requested = req.query.path || 'Home.md';
-
-  // Feature 16: inline wiki editing beyond the Data Dictionary — a saved
-  // full-page override (see wikiOverrides.js) takes priority over the
-  // freshly generated file on disk, same precedence as a dictionary
-  // override over an auto-detected placeholder.
-  const pageOverrides = wikiOverrides.loadOverrides(app.id);
-  if (pageOverrides[requested]) {
-    return res.json({ path: requested, content: pageOverrides[requested].content, overridden: true, updatedAt: pageOverrides[requested].updatedAt });
-  }
-
-  // Feature 9: monorepo sub-package links in Home.md's "Packages" section
-  // (see wikiWriter.js) point outside this app's own wiki/ dir — each
-  // sub-package is scanned independently with its own wiki/ under the
-  // shared scan root, e.g. "<scanRoot>/billing-service/wiki/Home.md". The
-  // frontend's relative-link resolution collapses "../billing-service/..."
-  // down to "billing-service/wiki/Home.md" (see resolveRelative in app.js),
-  // which doesn't exist under wikiDir — so try wikiDir first (the common
-  // case, unchanged) and fall back to resolving against the scan root,
-  // still confined to some "wiki" subdirectory so this can't be used to
-  // read arbitrary source files.
-  const wikiRoot = path.resolve(wikiDir);
-  const appRoot = path.resolve(app.localPath);
-  const inWiki = path.resolve(wikiDir, requested);
-  const inAppRoot = path.resolve(appRoot, requested);
-  const candidates = [];
-  if (inWiki === wikiRoot || inWiki.startsWith(wikiRoot + path.sep)) candidates.push(inWiki);
-  if ((inAppRoot === appRoot || inAppRoot.startsWith(appRoot + path.sep)) && inAppRoot.split(path.sep).includes('wiki')) {
-    candidates.push(inAppRoot);
-  }
-  const resolved = candidates.find((p) => fs.existsSync(p));
-  if (!resolved) return res.status(404).json({ error: 'File not found' });
-  const content = fs.readFileSync(resolved, 'utf8');
-  res.json({ path: requested, content, overridden: false });
+  const result = resolveWikiFile(app, req.query.path);
+  if (!result) return res.status(404).json({ error: 'File not found' });
+  res.json(result);
 });
 
 // Feature 16: save/clear a full-page override for a generated wiki page
@@ -610,6 +579,34 @@ router.post('/:id/models/override', requireRole('editor'), (req, res) => {
 
 // Feature 13: new-app onboarding checklist (see onboarding.js) — distinct
 // from Progress.md's directory-scan progress tracker.
+// Feature 17: public read-only share link. Generating/revoking a link is
+// admin-gated — it's a decision to expose this app's wiki to anyone with
+// the URL, no login required, same weight as the other admin-only actions
+// (Deep scan, CI Gate Severity). Viewing an existing link needs no auth at
+// all — see src/routes/share.js, a separate router mounted outside
+// attachUser's normal app surface, deliberately scoped to read-only wiki
+// pages only (no issues, no triage, no settings).
+router.get('/:id/share', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  res.json({ enabled: !!app.shareToken, token: app.shareToken || null });
+});
+
+router.post('/:id/share', requireRole('admin'), (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const token = crypto.randomBytes(16).toString('hex');
+  db.update(app.id, { shareToken: token });
+  res.json({ enabled: true, token });
+});
+
+router.delete('/:id/share', requireRole('admin'), (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  db.update(app.id, { shareToken: null });
+  res.status(204).end();
+});
+
 router.get('/:id/onboarding', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });

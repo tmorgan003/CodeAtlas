@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shared Wiki — CodeAtlas</title>
+<link rel="stylesheet" href="styles.css" />
+<script>
+  (function () {
+    var stored = localStorage.getItem('codeatlas-theme');
+    if (stored === 'light' || stored === 'dark') document.documentElement.setAttribute('data-theme', stored);
+  })();
+</script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>
+        <svg class="brand-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 7.5 L6.2 16.3 M12 7.5 L17.8 16.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <circle cx="12" cy="5" r="2.6" fill="currentColor"/>
+          <circle cx="5" cy="18" r="2.6" fill="currentColor"/>
+          <circle cx="19" cy="18" r="2.6" fill="currentColor"/>
+        </svg>
+        Code<span class="brand-accent">Atlas</span>
+      </h1>
+      <p class="subtitle" id="share-subtitle">Read-only shared wiki</p>
+    </div>
+    <button type="button" id="theme-toggle" class="theme-toggle">Theme</button>
+  </header>
+
+  <main>
+    <section class="panel" id="share-panel">
+      <h2 id="share-app-name">Loading…</h2>
+      <p id="share-app-purpose" style="color:var(--muted)"></p>
+      <div id="wiki-nav" class="wiki-nav">
+        <span>Wiki:</span>
+        <div id="wiki-links"></div>
+      </div>
+      <article id="wiki-view" class="wiki-view"></article>
+    </section>
+  </main>
+
+  <script src="share.js"></script>
+</body>
+</html>
