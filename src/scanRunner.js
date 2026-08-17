@@ -16,9 +16,12 @@ async function triggerAppScan(app) {
 
   try {
     let localPath = app.pathOrRepo;
+    let lastScannedRef = null;
     if (isRepoLink(app.pathOrRepo)) {
-      onProgress(`Cloning ${app.pathOrRepo}...`);
-      localPath = await cloneRepo(app.id, app.pathOrRepo);
+      onProgress(app.gitRef ? `Cloning ${app.pathOrRepo} at ${app.gitRef}...` : `Cloning ${app.pathOrRepo}...`);
+      const cloned = await cloneRepo(app.id, app.pathOrRepo, app.gitRef);
+      localPath = cloned.path;
+      lastScannedRef = { ref: cloned.ref, commit: cloned.commit, branch: cloned.branch };
     } else if (!path.isAbsolute(localPath)) {
       localPath = path.resolve(localPath);
     }
@@ -41,6 +44,7 @@ async function triggerAppScan(app) {
       stats: result.stats,
       error: null,
       scannedAt: new Date().toISOString(),
+      lastScannedRef,
     });
 
     await notifyIfNeeded(updated, result.diff);

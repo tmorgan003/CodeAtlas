@@ -220,14 +220,14 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled } = req.body || {};
+  const { name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled, gitRef } = req.body || {};
   if (!name || !pathOrRepo) {
     return res.status(400).json({ error: 'name and pathOrRepo are required' });
   }
   if (owner && !owners.isValid(owner)) {
     return res.status(400).json({ error: `Unknown owner "${owner}" — add it via Manage Owners first, or leave this blank.` });
   }
-  const entry = db.create({ name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled });
+  const entry = db.create({ name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled, gitRef });
   res.status(201).json(entry);
 });
 
@@ -236,7 +236,7 @@ router.patch('/:id', (req, res) => {
   if (!app) return res.status(404).json({ error: 'App not found' });
   const {
     purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl,
-    failOnSeverity, digestEnabled, trackerType, trackerBaseUrl, trackerProjectOrRepo, trackerEmail, trackerToken,
+    failOnSeverity, digestEnabled, trackerType, trackerBaseUrl, trackerProjectOrRepo, trackerEmail, trackerToken, gitRef,
     archived,
   } = req.body || {};
   const patch = {};
@@ -267,6 +267,7 @@ router.patch('/:id', (req, res) => {
   if (trackerProjectOrRepo !== undefined) patch.trackerProjectOrRepo = trackerProjectOrRepo;
   if (trackerEmail !== undefined) patch.trackerEmail = trackerEmail;
   if (trackerToken !== undefined) patch.trackerToken = trackerToken;
+  if (gitRef !== undefined) patch.gitRef = gitRef;
   if (archived !== undefined) patch.archived = !!archived;
   const updated = db.update(app.id, patch);
   res.json(updated);

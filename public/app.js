@@ -1080,6 +1080,24 @@ async function openDetail(id) {
     const SCHEDULE_LABELS = { 0: 'Off', 60: 'Hourly', 1440: 'Daily', 10080: 'Weekly' };
 
     detailMeta.append(...fieldRow('Path / Repo', app.pathOrRepo));
+
+    // Feature: scan a specific branch/tag/commit instead of always the
+    // default branch (repo URL targets only — a local path ignores this).
+    // Editable here, takes effect on the next scan.
+    const gitRefDt = document.createElement('dt');
+    gitRefDt.textContent = 'Git Ref';
+    const gitRefDd = document.createElement('dd');
+    const gitRefInput = document.createElement('input');
+    gitRefInput.type = 'text';
+    gitRefInput.placeholder = 'default branch';
+    gitRefInput.value = app.gitRef || '';
+    gitRefInput.addEventListener('blur', async () => {
+      if (gitRefInput.value === (app.gitRef || '')) return;
+      await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ gitRef: gitRefInput.value.trim() }) });
+    });
+    gitRefInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') gitRefInput.blur(); });
+    gitRefDd.appendChild(gitRefInput);
+    detailMeta.append(gitRefDt, gitRefDd);
     detailMeta.append(...fieldRow('Purpose', app.purpose));
     detailMeta.append(...fieldRow('Owner / Team', app.owner));
     detailMeta.append(...badgeFieldRow('Environment', app.environment, ENV_BADGE_CLASS[app.environment] || 'env-internal', 'env-badge'));
@@ -1182,6 +1200,11 @@ async function openDetail(id) {
 
     detailMeta.append(...fieldRow('Wiki Location', app.wikiLink));
     detailMeta.append(...fieldRow('Last Scanned', app.scannedAt ? new Date(app.scannedAt).toLocaleString() : ''));
+    if (app.lastScannedRef) {
+      const refText = (app.lastScannedRef.branch ? `${app.lastScannedRef.branch} @ ` : '') + app.lastScannedRef.commit
+        + (app.lastScannedRef.ref && app.lastScannedRef.ref !== app.lastScannedRef.branch ? ` (requested: ${app.lastScannedRef.ref})` : '');
+      detailMeta.append(...fieldRow('Last Scanned Ref', refText));
+    }
     if (app.error) detailMeta.append(...fieldRow('Error', app.error));
 
     trackerForm.trackerType.value = app.trackerType || 'none';

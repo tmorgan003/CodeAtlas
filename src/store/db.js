@@ -56,6 +56,8 @@ function create(fields) {
     trackerProjectOrRepo: fields.trackerProjectOrRepo || '',
     trackerEmail: fields.trackerEmail || '',
     trackerToken: fields.trackerToken || '',
+    gitRef: fields.gitRef || '',
+    lastScannedRef: null,
     archived: false,
     status: 'Not Started',
     wikiLink: null,

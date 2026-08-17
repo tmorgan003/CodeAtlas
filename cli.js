@@ -13,12 +13,13 @@ const { isRepoLink, cloneRepo } = require('./src/scanner/gitFetch');
 const SEVERITY_ORDER = { Critical: 0, High: 1, Medium: 2, Low: 3 };
 
 function parseArgs(argv) {
-  const opts = { failOn: 'Critical', json: false, deep: false, name: null, target: null };
+  const opts = { failOn: 'Critical', json: false, deep: false, name: null, target: null, ref: null };
   for (const arg of argv) {
     if (arg === '--json') opts.json = true;
     else if (arg === '--deep') opts.deep = true;
     else if (arg.startsWith('--fail-on=')) opts.failOn = arg.split('=')[1];
     else if (arg.startsWith('--name=')) opts.name = arg.split('=')[1];
+    else if (arg.startsWith('--ref=')) opts.ref = arg.split('=')[1];
     else if (!arg.startsWith('--')) opts.target = arg;
   }
   return opts;
@@ -32,6 +33,7 @@ Options:
   --deep                                 Enable LLM-assisted deep scan mode (shells out to the local claude CLI)
   --json                                 Print machine-readable JSON summary instead of text
   --name=<name>                          Display name for the scan (default: derived from the path/repo)
+  --ref=<branch|tag|commit>              Scan this ref instead of the repo's default branch (repo URL targets only)
 `);
 }
 
@@ -50,11 +52,15 @@ async function main() {
 
   let localPath = opts.target;
   let appId;
+  let resolvedRef = null;
   if (isRepoLink(opts.target)) {
     appId = `cli-${crypto.createHash('sha1').update(opts.target).digest('hex').slice(0, 12)}`;
-    log(`Cloning ${opts.target}...`);
+    log(opts.ref ? `Cloning ${opts.target} at ${opts.ref}...` : `Cloning ${opts.target}...`);
     try {
-      localPath = await cloneRepo(appId, opts.target);
+      const cloned = await cloneRepo(appId, opts.target, opts.ref);
+      localPath = cloned.path;
+      resolvedRef = cloned;
+      log(`Checked out ${cloned.branch ? `branch ${cloned.branch} @ ` : ''}${cloned.commit}`);
     } catch (err) {
       console.error(`Failed to clone repo: ${err.message}`);
       process.exit(2);
@@ -83,6 +89,7 @@ async function main() {
   const summary = {
     name,
     target: opts.target,
+    resolvedRef,
     wikiPath: path.join(localPath, 'wiki', 'Home.md'),
     stats: result.stats,
     issuesBySeverity: bySeverity,
