@@ -1,11 +1,11 @@
 // Feature 19 (notification half): after a scan, if the app has a webhook
-// URL configured and new Critical/High severity issues appeared since the
-// last scan, POST a summary to it. Uses a `{ text }` payload — the format
-// Slack (and many other chat tools) accept directly for an incoming
-// webhook — so this covers "Slack or generic webhook" with zero
-// dependencies. Real SMTP email notification is out of scope here: there's
-// no mail server configured in this environment to build or test that
-// against honestly.
+// URL configured and new issues at or above its configured notifySeverity
+// threshold appeared since the last scan, POST a summary to it. Uses a
+// `{ text }` payload — the format Slack (and many other chat tools) accept
+// directly for an incoming webhook — so this covers "Slack or generic
+// webhook" with zero dependencies. Real SMTP email notification is out of
+// scope here: there's no mail server configured in this environment to
+// build or test that against honestly.
 
 const https = require('https');
 const http = require('http');
@@ -43,20 +43,28 @@ function postJson(urlString, payload) {
   });
 }
 
-function severityAtLeastHigh(issue) {
-  return issue.severity === 'Critical' || issue.severity === 'High';
+// Lower rank = more severe. Mirrors the ordering used for the CI gate
+// (failOnSeverity) so "at or above" reads the same way in both places.
+const SEVERITY_RANK = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+
+function severityAtOrAbove(issue, threshold) {
+  const rank = SEVERITY_RANK[issue.severity];
+  const thresholdRank = SEVERITY_RANK[threshold] ?? SEVERITY_RANK.High;
+  return rank !== undefined && rank <= thresholdRank;
 }
 
 async function notifyIfNeeded(app, diff) {
   if (!app.notifyWebhookUrl) return null;
   if (!diff) return null; // first scan, or scan didn't produce a diff (no appId)
-  const notable = diff.newIssues.filter(severityAtLeastHigh);
+  const threshold = app.notifySeverity || 'High';
+  const notable = diff.newIssues.filter((i) => severityAtOrAbove(i, threshold));
   if (!notable.length) return null;
 
+  const label = threshold === 'Critical' ? 'Critical' : `${threshold} or above`;
   const lines = notable.slice(0, 10).map((i) => `• [${i.severity}] ${i.category} — ${i.file}:${i.line} — ${i.summary}`);
-  const text = `*CodeAtlas: ${notable.length} new Critical/High issue(s) in "${app.name}"*\n${lines.join('\n')}${notable.length > 10 ? `\n…and ${notable.length - 10} more` : ''}\nWiki: ${app.wikiLink || '(unavailable)'}`;
+  const text = `*CodeAtlas: ${notable.length} new ${label} issue(s) in "${app.name}"*\n${lines.join('\n')}${notable.length > 10 ? `\n…and ${notable.length - 10} more` : ''}\nWiki: ${app.wikiLink || '(unavailable)'}`;
 
   return postJson(app.notifyWebhookUrl, { text });
 }
 
-module.exports = { notifyIfNeeded, postJson };
+module.exports = { notifyIfNeeded, postJson, severityAtOrAbove };

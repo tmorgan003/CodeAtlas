@@ -255,12 +255,15 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled, gitRef } = req.body || {};
+  const { name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, notifySeverity, failOnSeverity, digestEnabled, gitRef } = req.body || {};
   if (!name || !pathOrRepo) {
     return res.status(400).json({ error: 'name and pathOrRepo are required' });
   }
   if (owner && !owners.isValid(owner)) {
     return res.status(400).json({ error: `Unknown owner "${owner}" — add it via Manage Owners first, or leave this blank.` });
+  }
+  if (notifySeverity !== undefined && !db.GATE_SEVERITIES.has(notifySeverity)) {
+    return res.status(400).json({ error: `notifySeverity must be one of: ${[...db.GATE_SEVERITIES].join(', ')}` });
   }
   // RBAC: Deep scan uses real Claude usage on every run, and a lenient CI
   // gate quietly lets issues through — both are admin-only, even at
@@ -272,7 +275,7 @@ router.post('/', (req, res) => {
   if (failOnSeverity !== undefined && failOnSeverity !== 'Critical' && role !== 'admin') {
     return res.status(403).json({ error: 'Changing the CI Gate Severity requires the "admin" role.' });
   }
-  const entry = db.create({ name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled, gitRef });
+  const entry = db.create({ name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, notifySeverity, failOnSeverity, digestEnabled, gitRef });
   res.status(201).json(entry);
 });
 
@@ -280,7 +283,7 @@ router.patch('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
   const {
-    purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl,
+    purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, notifySeverity,
     failOnSeverity, digestEnabled, trackerType, trackerBaseUrl, trackerProjectOrRepo, trackerEmail, trackerToken, gitRef,
     archived,
   } = req.body || {};
@@ -307,6 +310,10 @@ router.patch('/:id', (req, res) => {
   if (tags !== undefined) patch.tags = Array.isArray(tags) ? tags : String(tags).split(',').map((t) => t.trim()).filter(Boolean);
   if (scheduleMinutes !== undefined) patch.scheduleMinutes = Number(scheduleMinutes) > 0 ? Number(scheduleMinutes) : 0;
   if (notifyWebhookUrl !== undefined) patch.notifyWebhookUrl = notifyWebhookUrl;
+  if (notifySeverity !== undefined) {
+    if (!db.GATE_SEVERITIES.has(notifySeverity)) return res.status(400).json({ error: `notifySeverity must be one of: ${[...db.GATE_SEVERITIES].join(', ')}` });
+    patch.notifySeverity = notifySeverity;
+  }
   if (failOnSeverity !== undefined) {
     if (!db.GATE_SEVERITIES.has(failOnSeverity)) return res.status(400).json({ error: `failOnSeverity must be one of: ${[...db.GATE_SEVERITIES].join(', ')}` });
     patch.failOnSeverity = failOnSeverity;

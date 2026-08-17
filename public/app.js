@@ -1562,7 +1562,35 @@ async function openDetail(id) {
     refreshGateStatus();
 
     detailMeta.append(...fieldRow('Auto-rescan', SCHEDULE_LABELS[app.scheduleMinutes] || `Every ${app.scheduleMinutes} min`));
-    detailMeta.append(...fieldRow('Notify Webhook', app.notifyWebhookUrl || '—'));
+
+    // Feature: on-completion webhook, plus the severity threshold that
+    // gates it (see notifySeverity in db.js / notify.js) — was hardcoded to
+    // "High" (Critical+High), now editable per app like gitRef/blur-to-save.
+    const notifyDt = document.createElement('dt');
+    notifyDt.textContent = 'Notify Webhook';
+    const notifyDd = document.createElement('dd');
+    const notifyUrlInput = document.createElement('input');
+    notifyUrlInput.type = 'text';
+    notifyUrlInput.placeholder = 'Slack incoming webhook or generic URL';
+    notifyUrlInput.value = app.notifyWebhookUrl || '';
+    notifyUrlInput.style.width = '60%';
+    const notifySeveritySelect = document.createElement('select');
+    for (const s of ['Critical', 'High', 'Medium', 'Low']) {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s === 'Critical' ? 'Critical only' : `${s}+`;
+      if (s === (app.notifySeverity || 'High')) opt.selected = true;
+      notifySeveritySelect.appendChild(opt);
+    }
+    const saveNotify = async () => {
+      app.notifyWebhookUrl = notifyUrlInput.value.trim();
+      await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ notifyWebhookUrl: app.notifyWebhookUrl, notifySeverity: notifySeveritySelect.value }) });
+    };
+    notifyUrlInput.addEventListener('blur', saveNotify);
+    notifyUrlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') notifyUrlInput.blur(); });
+    notifySeveritySelect.addEventListener('change', saveNotify);
+    notifyDd.append(notifyUrlInput, document.createTextNode(' '), notifySeveritySelect);
+    detailMeta.append(notifyDt, notifyDd);
 
     // Feature 12: weekly digest — a periodic rollup, opt-in and editable
     // per app, distinct from the on-completion webhook notification.

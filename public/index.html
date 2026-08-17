@@ -116,6 +116,14 @@
           <label>Notify Webhook URL
             <input type="text" name="notifyWebhookUrl" placeholder="Slack incoming webhook or generic URL (optional)" />
           </label>
+          <label>Notify Severity <span class="field-hint">(only new issues at or above this trigger a notification)</span>
+            <select name="notifySeverity">
+              <option value="Critical">Critical only</option>
+              <option value="High" selected>High (default) — Critical or High</option>
+              <option value="Medium">Medium — Medium or above</option>
+              <option value="Low">Low — any new finding</option>
+            </select>
+          </label>
         </div>
         <label class="checkbox-label">
           <input type="checkbox" name="digestEnabled" />

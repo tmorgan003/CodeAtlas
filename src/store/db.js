@@ -48,6 +48,12 @@ function create(fields) {
     scanMode: fields.scanMode === 'deep' ? 'deep' : 'static',
     scheduleMinutes: Number(fields.scheduleMinutes) > 0 ? Number(fields.scheduleMinutes) : 0,
     notifyWebhookUrl: fields.notifyWebhookUrl || '',
+    // Feature: how urgent a new issue has to be before the on-completion
+    // webhook fires — was hardcoded to "High" (i.e. Critical+High), now
+    // configurable per app the same way failOnSeverity is, so a team that
+    // only cares about Critical (or one that wants Medium+) isn't stuck
+    // with everyone else's default.
+    notifySeverity: GATE_SEVERITIES.has(fields.notifySeverity) ? fields.notifySeverity : 'High',
     failOnSeverity: GATE_SEVERITIES.has(fields.failOnSeverity) ? fields.failOnSeverity : 'Critical',
     digestEnabled: !!fields.digestEnabled,
     lastDigestAt: null,
