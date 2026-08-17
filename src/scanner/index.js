@@ -232,6 +232,7 @@ async function runScan(rootPath, meta, onProgress) {
           line: 1,
           severity: 'Low',
           category: 'Scan Limitation',
+          source: 'dependency-audit',
           summary: '`npm audit` could not be run (offline, npm missing, or no network access) — dependency findings above are from a small built-in advisory list, not live data.',
           suggestedFix: 'Run `npm audit` manually on this machine for full, current vulnerability coverage.',
         });

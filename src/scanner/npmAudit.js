@@ -66,6 +66,7 @@ async function runNpmAudit(rootPath) {
       line: 1,
       severity,
       category: 'Outdated/Vulnerable Dependency',
+      source: 'dependency-audit',
       summary: `${name} (${info.range || 'range unknown'}) — ${info.severity} severity. ${via}`,
       suggestedFix: `${fixNote} (Live data from \`npm audit\`.)`,
     });
@@ -76,6 +77,7 @@ async function runNpmAudit(rootPath) {
       line: 1,
       severity: 'Low',
       category: 'Outdated/Vulnerable Dependency',
+      source: 'dependency-audit',
       summary: `npm audit reported ${entries.length} vulnerable dependencies total; only the first ${MAX_ISSUES} are listed above.`,
       suggestedFix: 'Run `npm audit` directly for the full list.',
     });

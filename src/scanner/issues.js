@@ -229,6 +229,7 @@ function checkKnownVulnerableDeps(rootPath, relPath, pkgJsonContent) {
           line: 1,
           severity: 'High',
           category: 'Outdated/Vulnerable Dependency',
+          source: 'dependency-audit',
           summary: `${known.name}@${declared} is below the known-fixed version ${known.badBelow} (${known.reason}).`,
           suggestedFix: `Upgrade ${known.name} to ${known.badBelow} or later. (Checked against a small built-in advisory list, not a live vulnerability database — also run \`npm audit\` for full coverage.)`,
         });

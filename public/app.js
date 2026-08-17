@@ -748,6 +748,7 @@ const crossIssuesContent = document.getElementById('cross-issues-content');
 const crossIssuesSearch = document.getElementById('cross-issues-search');
 const crossIssuesSeverity = document.getElementById('cross-issues-severity');
 const crossIssuesApp = document.getElementById('cross-issues-app');
+const crossIssuesSource = document.getElementById('cross-issues-source');
 
 let allCrossIssues = [];
 
@@ -755,11 +756,13 @@ function applyCrossIssuesFilters() {
   const search = crossIssuesSearch.value.trim().toLowerCase();
   const severity = crossIssuesSeverity.value;
   const appId = crossIssuesApp.value;
+  const source = crossIssuesSource.value;
   const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
   const filtered = allCrossIssues
     .filter((i) => i.triage.state === 'open' || i.triage.state === 'acknowledged')
     .filter((i) => !severity || i.severity === severity)
     .filter((i) => !appId || i.appId === appId)
+    .filter((i) => !source || (i.source || 'static') === source)
     .filter((i) => !search || `${i.category} ${i.file} ${i.summary}`.toLowerCase().includes(search))
     .sort((a, b) => order[a.severity] - order[b.severity]);
   renderCrossIssuesTable(filtered);
@@ -873,7 +876,7 @@ closeCrossIssuesBtn.addEventListener('click', () => {
   listPanel.hidden = false;
 });
 
-[crossIssuesSearch, crossIssuesSeverity, crossIssuesApp].forEach((el) => el.addEventListener('input', applyCrossIssuesFilters));
+[crossIssuesSearch, crossIssuesSeverity, crossIssuesApp, crossIssuesSource].forEach((el) => el.addEventListener('input', applyCrossIssuesFilters));
 
 // ---- Bulk import ----
 
@@ -1311,6 +1314,7 @@ async function loadIssuesInteractive(id) {
     const SUMMARY_TRUNCATE_AT = 75;
     for (const issue of issues) {
       const tr = document.createElement('tr');
+      tr.dataset.source = issue.source || 'static';
       if (issue.triage.state === 'false_positive' || issue.triage.state === 'fixed') tr.style.opacity = '0.5';
 
       const severityTd = document.createElement('td');
@@ -1376,6 +1380,7 @@ async function loadIssuesInteractive(id) {
 
       const detailTr = document.createElement('tr');
       detailTr.className = 'issue-detail-row';
+      detailTr.dataset.source = tr.dataset.source;
       detailTr.hidden = true;
       const detailTd = document.createElement('td');
       detailTd.colSpan = 6;
@@ -1460,6 +1465,36 @@ async function loadIssuesInteractive(id) {
     }
     withViewTransition(() => {
       wikiView.innerHTML = '<h2>Issues</h2><p>Setting a finding to "false_positive" or "fixed" removes it from the active count and CLI severity gating on the next scan.</p>';
+
+      // Feature 2: npm-audit / dependency-advisory findings are tagged
+      // source: "dependency-audit" at emission time (npmAudit.js,
+      // issues.js's checkKnownVulnerableDeps); everything else is implicitly
+      // "static". This just toggles row visibility — no re-fetch/re-render.
+      const filterBar = document.createElement('div');
+      filterBar.className = 'filter-bar';
+      const sourceLabel = document.createElement('label');
+      sourceLabel.textContent = 'Source ';
+      sourceLabel.style.color = 'var(--muted)';
+      sourceLabel.style.fontSize = '0.85rem';
+      const sourceSelect = document.createElement('select');
+      sourceSelect.id = 'issues-source-filter';
+      sourceSelect.innerHTML = '<option value="">All sources</option><option value="static">Static findings</option><option value="dependency-audit">Dependency audit</option>';
+      sourceSelect.addEventListener('change', () => {
+        const filter = sourceSelect.value;
+        for (const row of table.querySelectorAll('tr[data-source]')) {
+          const matches = !filter || row.dataset.source === filter;
+          row.hidden = !matches;
+          if (!matches && row.classList.contains('issue-detail-row') === false) {
+            // hide a filtered-out row's detail row too, even if it was expanded
+            const next = row.nextElementSibling;
+            if (next && next.classList.contains('issue-detail-row')) next.hidden = true;
+          }
+        }
+      });
+      sourceLabel.appendChild(sourceSelect);
+      filterBar.appendChild(sourceLabel);
+      wikiView.appendChild(filterBar);
+
       const scroll = document.createElement('div');
       scroll.className = 'table-scroll';
       scroll.appendChild(table);
