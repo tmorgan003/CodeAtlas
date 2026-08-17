@@ -2744,8 +2744,10 @@ async function loadGraphView(id) {
       gEl.append(circle, label);
       gEl.addEventListener('click', () => {
         const isActive = gEl.dataset.active === '1';
-        for (const el of Object.values(nodeEls)) el.dataset.active = '0';
+        for (const el of Object.values(nodeEls)) { el.dataset.active = '0'; el.style.opacity = '1'; }
         for (const line of edgeLines) line.setAttribute('stroke', 'var(--border)');
+        searchInput.value = '';
+        searchStatus.textContent = '';
         if (!isActive) {
           gEl.dataset.active = '1';
           for (const line of edgeLines) {
@@ -2760,8 +2762,50 @@ async function loadGraphView(id) {
     const appMeta = allApps.find((a) => a.id === id);
     const filenameBase = (appMeta ? appMeta.name : 'app').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-dependency-graph';
 
+    // Feature 18: dependency graph search — jump to/highlight a specific
+    // file node instead of hunting for it by eye among a dense graph.
+    // Reuses the same click-to-highlight styling (default edge color vs.
+    // accent), just driven by a text match instead of a click.
+    const searchStatus = document.createElement('span');
+    searchStatus.className = 'graph-search-status';
+    function applyGraphSearch(query) {
+      const q = query.trim().toLowerCase();
+      for (const line of edgeLines) line.setAttribute('stroke', 'var(--border)');
+      if (!q) {
+        for (const el of Object.values(nodeEls)) { el.style.opacity = '1'; el.dataset.active = '0'; }
+        searchStatus.textContent = '';
+        return;
+      }
+      const matchIds = g.nodes.map((n) => n.id).filter((nid) => nid.toLowerCase().includes(q));
+      const matchSet = new Set(matchIds);
+      for (const [nid, el] of Object.entries(nodeEls)) {
+        const isMatch = matchSet.has(nid);
+        el.style.opacity = isMatch ? '1' : '0.15';
+        el.dataset.active = isMatch ? '1' : '0';
+      }
+      for (const line of edgeLines) {
+        if (matchSet.has(line.dataset.from) || matchSet.has(line.dataset.to)) line.setAttribute('stroke', 'var(--accent-text)');
+      }
+      searchStatus.textContent = matchIds.length
+        ? `${matchIds.length} match(es).`
+        : 'No matching files.';
+      if (matchIds.length) {
+        const first = nodeEls[matchIds[0]];
+        if (first) first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.placeholder = 'Search files in this graph...';
+    searchInput.className = 'graph-search-input';
+    searchInput.addEventListener('input', () => applyGraphSearch(searchInput.value));
+
     withViewTransition(() => {
       wikiView.innerHTML = `<h2>Dependency Graph</h2><p style="color:var(--muted);font-size:0.85rem">${g.nodes.length} file(s), ${g.edges.length} resolved import edge(s). Click a node to highlight its direct connections.</p>`;
+      const searchRow = document.createElement('div');
+      searchRow.className = 'graph-search-row';
+      searchRow.append(searchInput, searchStatus);
+      wikiView.appendChild(searchRow);
       const actions = document.createElement('div');
       actions.className = 'graph-export-actions';
       const svgBtn = document.createElement('button');
