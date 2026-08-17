@@ -1272,6 +1272,93 @@ function renderHistoryChart(snapshotsAsc) {
   return svg;
 }
 
+// Feature 10: renders the result of diffing any two picked scans, capping
+// long lists (CodeAtlas alone can have 1000+ issues) so a big diff doesn't
+// stall the page.
+function renderDiffSection(container, title, items, formatter) {
+  const h = document.createElement('h4');
+  h.textContent = `${title} (${items.length})`;
+  container.appendChild(h);
+  if (!items.length) return;
+  const ul = document.createElement('ul');
+  const CAP = 50;
+  for (const item of items.slice(0, CAP)) {
+    const li = document.createElement('li');
+    li.textContent = formatter(item);
+    ul.appendChild(li);
+  }
+  if (items.length > CAP) {
+    const li = document.createElement('li');
+    li.style.color = 'var(--muted)';
+    li.textContent = `...and ${items.length - CAP} more.`;
+    ul.appendChild(li);
+  }
+  container.appendChild(ul);
+}
+
+function renderDiffResult(container, response) {
+  const { from, to, diff } = response;
+  container.innerHTML = '';
+  const summary = document.createElement('p');
+  summary.style.color = 'var(--muted)';
+  summary.style.fontSize = '0.85rem';
+  summary.textContent = `Comparing ${new Date(from).toLocaleString()} → ${new Date(to).toLocaleString()}`;
+  container.appendChild(summary);
+
+  renderDiffSection(container, 'New issues', diff.newIssues, (i) => `[${i.severity}] ${i.category} — ${i.file}:${i.line} — ${i.summary}`);
+  renderDiffSection(container, 'Resolved issues', diff.resolvedIssues, (i) => `[${i.severity}] ${i.category} — ${i.file}:${i.line} — ${i.summary}`);
+  renderDiffSection(container, 'New routes', diff.newRoutes, (r) => `+ ${r.method} ${r.path} (${r.file})`);
+  renderDiffSection(container, 'Removed routes', diff.removedRoutes, (r) => `− ${r.method} ${r.path} (${r.file})`);
+  renderDiffSection(container, 'Added models', diff.addedModels, (m) => `+ ${m.name}`);
+  renderDiffSection(container, 'Removed models', diff.removedModels, (m) => `− ${m.name}`);
+}
+
+function buildDiffPicker(id, snapshotsNewestFirst) {
+  const wrap = document.createElement('div');
+  wrap.className = 'diff-picker';
+
+  const optionsHtml = snapshotsNewestFirst
+    .map((s) => `<option value="${s.scannedAt}">${new Date(s.scannedAt).toLocaleString()}</option>`)
+    .join('');
+
+  const fromLabel = document.createElement('label');
+  fromLabel.textContent = 'From ';
+  const fromSelect = document.createElement('select');
+  fromSelect.innerHTML = optionsHtml;
+  fromSelect.value = snapshotsNewestFirst[snapshotsNewestFirst.length - 1].scannedAt; // oldest
+  fromLabel.appendChild(fromSelect);
+
+  const toLabel = document.createElement('label');
+  toLabel.textContent = 'To ';
+  const toSelect = document.createElement('select');
+  toSelect.innerHTML = optionsHtml;
+  toSelect.value = snapshotsNewestFirst[0].scannedAt; // newest
+  toLabel.appendChild(toSelect);
+
+  const compareBtn = document.createElement('button');
+  compareBtn.type = 'button';
+  compareBtn.textContent = 'Compare';
+
+  const resultDiv = document.createElement('div');
+  resultDiv.className = 'diff-result';
+
+  compareBtn.addEventListener('click', async () => {
+    resultDiv.innerHTML = '<p>Loading…</p>';
+    try {
+      const res = await api(`/${id}/history/diff?from=${encodeURIComponent(fromSelect.value)}&to=${encodeURIComponent(toSelect.value)}`);
+      renderDiffResult(resultDiv, res);
+    } catch (err) {
+      resultDiv.textContent = 'Could not load diff: ' + err.message;
+    }
+  });
+
+  const row = document.createElement('div');
+  row.className = 'diff-picker-row';
+  row.append(fromLabel, toLabel, compareBtn);
+  wrap.append(row, resultDiv);
+  return wrap;
+}
+
 async function loadHistory(id) {
   try {
     const snapshots = await api(`/${id}/history`); // newest-first
@@ -1298,6 +1385,12 @@ async function loadHistory(id) {
       tableWrap.className = 'table-scroll';
       tableWrap.innerHTML = `<table><tr><th>Scanned At</th><th>Units</th><th>Models</th><th>Routes</th><th>Issues</th></tr>${rows}</table>`;
       wikiView.appendChild(tableWrap);
+      if (snapshots.length > 1) {
+        const heading = document.createElement('h3');
+        heading.textContent = 'Compare Any Two Scans';
+        wikiView.appendChild(heading);
+        wikiView.appendChild(buildDiffPicker(id, snapshots));
+      }
     });
   } catch (err) {
     wikiView.textContent = 'Could not load history: ' + err.message;

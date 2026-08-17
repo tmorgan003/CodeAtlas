@@ -265,6 +265,21 @@ router.get('/:id/history', (req, res) => {
   res.json(snapshots);
 });
 
+// Feature 10: diff any two historical scans, not just the latest against
+// the one before it — history.diffSnapshots() was already generic, this
+// just lets the caller pick which two snapshots (by scannedAt) to feed it.
+router.get('/:id/history/diff', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { from, to } = req.query;
+  if (!from || !to) return res.status(400).json({ error: 'from and to query params (scannedAt timestamps) are required' });
+  const snapshots = history.loadSnapshots(app.id);
+  const fromSnap = snapshots.find((s) => s.scannedAt === from);
+  const toSnap = snapshots.find((s) => s.scannedAt === to);
+  if (!fromSnap || !toSnap) return res.status(404).json({ error: 'One or both scans not found in history' });
+  res.json({ from: fromSnap.scannedAt, to: toSnap.scannedAt, diff: history.diffSnapshots(fromSnap, toSnap) });
+});
+
 // Structured (non-markdown) view of the latest scan's issues, merged with
 // triage state, for the interactive Issues UI.
 router.get('/:id/issues', (req, res) => {
