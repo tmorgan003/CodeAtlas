@@ -497,6 +497,29 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
+// ---- Portfolio-level static site export ----
+
+const portfolioExportBtn = document.getElementById('portfolio-export-btn');
+const portfolioExportStatus = document.getElementById('portfolio-export-status');
+
+portfolioExportBtn.addEventListener('click', async () => {
+  portfolioExportStatus.classList.remove('success', 'error');
+  portfolioExportStatus.textContent = 'Exporting…';
+  portfolioExportBtn.disabled = true;
+  try {
+    const res = await fetch('/api/apps/export/portfolio-static-site', { method: 'POST' });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+    portfolioExportStatus.textContent = `Exported ${body.exportedCount}/${body.appCount} app(s) to ${body.outDir}`;
+    portfolioExportStatus.classList.add('success');
+  } catch (err) {
+    portfolioExportStatus.textContent = 'Error: ' + err.message;
+    portfolioExportStatus.classList.add('error');
+  } finally {
+    portfolioExportBtn.disabled = false;
+  }
+});
+
 // ---- Portfolio tech stack view ----
 
 const techStackBtn = document.getElementById('tech-stack-btn');

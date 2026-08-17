@@ -67,4 +67,4 @@ function buildStaticSite(wikiDir, outDir, appName) {
   return { outDir, pageCount: relFiles.length };
 }
 
-module.exports = { buildStaticSite };
+module.exports = { buildStaticSite, PAGE_STYLE };

@@ -10,6 +10,7 @@ const { searchWiki } = require('../scanner/wikiSearch');
 const progressBus = require('../scanner/progressBus');
 const { triggerAppScan } = require('../scanRunner');
 const { buildStaticSite } = require('../scanner/exportSite');
+const { buildPortfolioStaticSite } = require('../scanner/exportPortfolio');
 const { pushToGithubWiki } = require('../scanner/exportGithubWiki');
 const { isRepoLink } = require('../scanner/gitFetch');
 
@@ -383,6 +384,22 @@ router.post('/:id/export/github-wiki', async (req, res) => {
   }
   try {
     const result = await pushToGithubWiki(path.join(app.localPath, 'wiki'), app.pathOrRepo, app.id, { dryRun: !!req.body?.dryRun });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String((err && err.message) || err) });
+  }
+});
+
+// Feature 11: combined static-site export across the whole portfolio, not
+// just one app at a time. Written under data/portfolio-export/ (this
+// project's own data dir — apps can live anywhere on disk, so there's no
+// single natural "portfolio root" to write under otherwise).
+router.post('/export/portfolio-static-site', (req, res) => {
+  const apps = db.loadAll();
+  if (!apps.length) return res.status(400).json({ error: 'No applications to export.' });
+  try {
+    const outDir = path.join(__dirname, '..', '..', 'data', 'portfolio-export');
+    const result = buildPortfolioStaticSite(apps, outDir);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: String((err && err.message) || err) });
