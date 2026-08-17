@@ -858,9 +858,81 @@ async function loadGraphView(id) {
   }
 }
 
+// Hand-rolled SVG line chart (same "no charting library" approach as the
+// dependency graph view) plotting issue/route counts across scans so
+// growth is visible at a glance instead of only as raw table rows.
+function renderHistoryChart(snapshotsAsc) {
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const width = 640, height = 200, padL = 30, padR = 12, padT = 14, padB = 24;
+  const innerW = width - padL - padR, innerH = height - padT - padB;
+  const n = snapshotsAsc.length;
+  const maxVal = Math.max(1, ...snapshotsAsc.map((s) => Math.max(s.stats.issues, s.stats.routes)));
+  const x = (i) => (n === 1 ? padL + innerW / 2 : padL + (innerW * i) / (n - 1));
+  const y = (v) => padT + innerH - (innerH * v) / maxVal;
+
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('width', '100%');
+  svg.style.maxWidth = `${width}px`;
+  svg.style.display = 'block';
+
+  const axis = document.createElementNS(svgNS, 'path');
+  axis.setAttribute('d', `M ${padL} ${padT} V ${padT + innerH} H ${padL + innerW}`);
+  axis.setAttribute('fill', 'none');
+  axis.setAttribute('stroke', 'var(--border)');
+  svg.appendChild(axis);
+
+  function drawSeries(key, color) {
+    const points = snapshotsAsc.map((s, i) => `${x(i)},${y(s.stats[key])}`).join(' ');
+    const poly = document.createElementNS(svgNS, 'polyline');
+    poly.setAttribute('points', points);
+    poly.setAttribute('fill', 'none');
+    poly.setAttribute('stroke', color);
+    poly.setAttribute('stroke-width', '2');
+    svg.appendChild(poly);
+    snapshotsAsc.forEach((s, i) => {
+      const c = document.createElementNS(svgNS, 'circle');
+      c.setAttribute('cx', x(i));
+      c.setAttribute('cy', y(s.stats[key]));
+      c.setAttribute('r', 3);
+      c.setAttribute('fill', color);
+      const title = document.createElementNS(svgNS, 'title');
+      title.textContent = `${new Date(s.scannedAt).toLocaleDateString()}: ${s.stats[key]} ${key}`;
+      c.appendChild(title);
+      svg.appendChild(c);
+    });
+  }
+  drawSeries('routes', 'var(--info)');
+  drawSeries('issues', 'var(--err)');
+
+  const labelStyle = (el, anchor) => {
+    el.setAttribute('font-size', '9');
+    el.setAttribute('fill', 'var(--muted)');
+    if (anchor) el.setAttribute('text-anchor', anchor);
+  };
+  const maxLabel = document.createElementNS(svgNS, 'text');
+  maxLabel.setAttribute('x', 2); maxLabel.setAttribute('y', padT + 4);
+  labelStyle(maxLabel); maxLabel.textContent = String(maxVal);
+  svg.appendChild(maxLabel);
+  const zeroLabel = document.createElementNS(svgNS, 'text');
+  zeroLabel.setAttribute('x', 2); zeroLabel.setAttribute('y', padT + innerH);
+  labelStyle(zeroLabel); zeroLabel.textContent = '0';
+  svg.appendChild(zeroLabel);
+  const firstLabel = document.createElementNS(svgNS, 'text');
+  firstLabel.setAttribute('x', padL); firstLabel.setAttribute('y', height - 6);
+  labelStyle(firstLabel); firstLabel.textContent = new Date(snapshotsAsc[0].scannedAt).toLocaleDateString();
+  svg.appendChild(firstLabel);
+  const lastLabel = document.createElementNS(svgNS, 'text');
+  lastLabel.setAttribute('x', padL + innerW); lastLabel.setAttribute('y', height - 6);
+  labelStyle(lastLabel, 'end'); lastLabel.textContent = new Date(snapshotsAsc[n - 1].scannedAt).toLocaleDateString();
+  svg.appendChild(lastLabel);
+
+  return svg;
+}
+
 async function loadHistory(id) {
   try {
-    const snapshots = await api(`/${id}/history`);
+    const snapshots = await api(`/${id}/history`); // newest-first
     if (!snapshots.length) {
       withViewTransition(() => { wikiView.innerHTML = '<p>No scan history recorded yet.</p>'; });
       return;
@@ -871,8 +943,20 @@ async function loadHistory(id) {
         : `<td>${s.stats.issues}</td>`;
       return `<tr><td>${new Date(s.scannedAt).toLocaleString()}</td><td>${s.stats.units}</td><td>${s.stats.models}</td><td>${s.stats.routes}</td>${issuesCell}</tr>`;
     }).join('');
-    const html = `<h2>Scan History</h2><div class="table-scroll"><table><tr><th>Scanned At</th><th>Units</th><th>Models</th><th>Routes</th><th>Issues</th></tr>${rows}</table></div>`;
-    withViewTransition(() => { wikiView.innerHTML = html; });
+    withViewTransition(() => {
+      wikiView.innerHTML = '<h2>Scan History</h2>';
+      if (snapshots.length > 1) {
+        const legend = document.createElement('div');
+        legend.className = 'chart-legend';
+        legend.innerHTML = '<span><i style="background:var(--err)"></i>Issues</span><span><i style="background:var(--info)"></i>Routes</span>';
+        wikiView.appendChild(legend);
+        wikiView.appendChild(renderHistoryChart([...snapshots].reverse()));
+      }
+      const tableWrap = document.createElement('div');
+      tableWrap.className = 'table-scroll';
+      tableWrap.innerHTML = `<table><tr><th>Scanned At</th><th>Units</th><th>Models</th><th>Routes</th><th>Issues</th></tr>${rows}</table>`;
+      wikiView.appendChild(tableWrap);
+    });
   } catch (err) {
     wikiView.textContent = 'Could not load history: ' + err.message;
   }

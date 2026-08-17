@@ -472,6 +472,9 @@ dd { margin: 0; word-break: break-word; }
 .wiki-view pre { background: var(--inset); padding: 0.8rem; border-radius: 6px; overflow-x: auto; }
 .wiki-view table { margin: 0.75rem 0; }
 .history-issues-flag { color: var(--err); font-weight: 700; }
+.chart-legend { display: flex; gap: 1rem; margin: 0.5rem 0 0.75rem; font-size: 0.8rem; color: var(--muted); }
+.chart-legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.chart-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .wiki-view a { color: var(--accent-text); cursor: pointer; }
 .wiki-view ul { padding-left: 1.3rem; }
 .wiki-view svg line { transition: stroke var(--dur-fast) var(--ease-out); }
