@@ -118,6 +118,13 @@ async function documentDirectory(rootPath, wikiDir, unitAbsPath, unitLabel, ctx,
 }
 
 async function runScan(rootPath, meta, onProgress) {
+  // Feature 14: scan performance metrics — measured around this whole
+  // function so a monorepo root's duration naturally includes the time
+  // spent awaiting its sub-package scans (real wall-clock time the user
+  // waited), while each sub-package's own recursive runScan call gets its
+  // own independent measurement too.
+  const scanStartedAt = Date.now();
+
   if (!fs.existsSync(rootPath) || !fs.statSync(rootPath).isDirectory()) {
     throw new Error(`Path does not exist or is not a directory: ${rootPath}`);
   }
@@ -274,11 +281,16 @@ async function runScan(rootPath, meta, onProgress) {
   // Feature 8: scan history + diffing (skipped when no appId, e.g. CLI runs
   // against an ad-hoc path with nothing to key history off of).
   let diff = null;
+  const durationMs = Date.now() - scanStartedAt;
+  const filesProcessed = cacheState.hits + cacheState.misses;
   if (meta.appId) {
     const scannedAt = new Date().toISOString();
     const snapshot = {
       scannedAt,
-      stats: { units: unitNames.length, models: models.length, routes: ctx.allRoutes.length, issues: activeIssues.length },
+      stats: {
+        units: unitNames.length, models: models.length, routes: ctx.allRoutes.length, issues: activeIssues.length,
+        durationMs, filesProcessed,
+      },
       issues: ctx.allIssues,
       routes: ctx.allRoutes.map((r) => ({ method: r.method, path: r.path, file: r.file })),
       // Feature: real process-flow diagrams. The richer per-route detail
@@ -343,6 +355,8 @@ async function runScan(rootPath, meta, onProgress) {
       dismissedIssues: ctx.allIssues.length - activeIssues.length,
       cacheHits: cacheState.hits,
       cacheMisses: cacheState.misses,
+      durationMs,
+      filesProcessed,
     },
   };
 }

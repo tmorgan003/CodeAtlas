@@ -662,6 +662,33 @@ async function loadDashboard() {
     }
     dashboardContent.appendChild(list);
   }
+
+  // Feature 14: flag apps whose latest scan ran meaningfully longer than the
+  // portfolio average (see the /dashboard route for the threshold logic).
+  if (d.slowApps.length) {
+    const slowHeading = document.createElement('p');
+    slowHeading.className = 'dashboard-subheading';
+    slowHeading.textContent = `Slow scans (portfolio average: ${formatDuration(d.avgDurationMs)}):`;
+    dashboardContent.appendChild(slowHeading);
+
+    const list = document.createElement('ul');
+    list.className = 'stale-list';
+    for (const s of d.slowApps) {
+      const li = document.createElement('li');
+      li.className = 'stale-item';
+      const link = document.createElement('a');
+      link.href = '#';
+      link.textContent = s.name;
+      link.style.color = 'var(--accent-text)';
+      link.addEventListener('click', (e) => { e.preventDefault(); openDetail(s.id); });
+      const dur = document.createElement('span');
+      dur.className = 'stale-age';
+      dur.textContent = `${formatDuration(s.durationMs)} — ${s.filesProcessed} file(s)`;
+      li.append(link, dur);
+      list.appendChild(li);
+    }
+    dashboardContent.appendChild(list);
+  }
 }
 
 async function triggerScan(id) {
@@ -963,6 +990,17 @@ const scanCalendarBtn = document.getElementById('scan-calendar-btn');
 const scanCalendarPanel = document.getElementById('scan-calendar-panel');
 const closeScanCalendarBtn = document.getElementById('close-scan-calendar');
 const scanCalendarContent = document.getElementById('scan-calendar-content');
+
+// Feature 14: scan performance metrics — shared duration formatter used by
+// the detail panel, scan history table, and the dashboard's slow-scan flags.
+function formatDuration(ms) {
+  if (ms < 1000) return `${ms}ms`;
+  const totalSeconds = ms / 1000;
+  if (totalSeconds < 60) return `${totalSeconds.toFixed(1)}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  return `${minutes}m ${seconds}s`;
+}
 
 function formatDueIn(nextDueAt) {
   const diffMs = new Date(nextDueAt).getTime() - Date.now();
@@ -1765,6 +1803,12 @@ async function openDetail(id) {
     digestDd.appendChild(digestLabel);
     detailMeta.append(digestDt, digestDd);
     detailMeta.append(...badgeFieldRow('Status', app.status, statusClass(app.status), 'status-badge'));
+
+    // Feature 14: scan performance metrics — duration and files processed
+    // (cache hits + misses) from the most recent scan.
+    if (app.stats && app.stats.durationMs !== undefined) {
+      detailMeta.append(...fieldRow('Last Scan Performance', `${formatDuration(app.stats.durationMs)} — ${app.stats.filesProcessed} file(s) processed (${app.stats.cacheHits} cached, ${app.stats.cacheMisses} reprocessed)`));
+    }
 
     // Feature 17: archiving retires an app from the default list/portfolio
     // rollups without touching its stored scan history — reversible from
@@ -2826,7 +2870,12 @@ async function loadHistory(id) {
       const issuesCell = s.stats.issues > 0
         ? `<td class="history-issues-flag">${s.stats.issues}</td>`
         : `<td>${s.stats.issues}</td>`;
-      return `<tr><td>${new Date(s.scannedAt).toLocaleString()}</td><td>${s.stats.units}</td><td>${s.stats.models}</td><td>${s.stats.routes}</td>${issuesCell}</tr>`;
+      // Feature 14: scan performance metrics — older snapshots predate
+      // durationMs/filesProcessed, so fall back to an em dash instead of
+      // showing "undefined" or "NaNs".
+      const durationCell = s.stats.durationMs !== undefined ? formatDuration(s.stats.durationMs) : '—';
+      const filesCell = s.stats.filesProcessed !== undefined ? s.stats.filesProcessed : '—';
+      return `<tr><td>${new Date(s.scannedAt).toLocaleString()}</td><td>${s.stats.units}</td><td>${s.stats.models}</td><td>${s.stats.routes}</td>${issuesCell}<td>${durationCell}</td><td>${filesCell}</td></tr>`;
     }).join('');
     withViewTransition(() => {
       wikiView.innerHTML = '<h2>Scan History</h2>';
@@ -2839,7 +2888,7 @@ async function loadHistory(id) {
       }
       const tableWrap = document.createElement('div');
       tableWrap.className = 'table-scroll';
-      tableWrap.innerHTML = `<table><tr><th>Scanned At</th><th>Units</th><th>Models</th><th>Routes</th><th>Issues</th></tr>${rows}</table>`;
+      tableWrap.innerHTML = `<table><tr><th>Scanned At</th><th>Units</th><th>Models</th><th>Routes</th><th>Issues</th><th>Duration</th><th>Files</th></tr>${rows}</table>`;
       wikiView.appendChild(tableWrap);
       if (snapshots.length > 1) {
         const heading = document.createElement('h3');

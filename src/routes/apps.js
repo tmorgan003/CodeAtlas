@@ -74,9 +74,29 @@ router.get('/dashboard', (req, res) => {
     }
   }
 
+  // Feature 14: flag apps whose most recent scan took meaningfully longer
+  // than the portfolio average — relative, not an arbitrary fixed number of
+  // seconds, so it stays meaningful whether the portfolio is mostly tiny
+  // static scans or mostly large deep scans. SLOW_MIN_MS is a floor so two
+  // apps that both scan in under a second don't get flagged over noise.
+  const SLOW_MIN_MS = 5000;
+  const SLOW_MULTIPLIER = 2;
+  const timedApps = apps.filter((a) => a.stats && typeof a.stats.durationMs === 'number');
+  const avgDurationMs = timedApps.length
+    ? timedApps.reduce((sum, a) => sum + a.stats.durationMs, 0) / timedApps.length
+    : 0;
+  const slowThresholdMs = Math.max(SLOW_MIN_MS, avgDurationMs * SLOW_MULTIPLIER);
+  const slowApps = timedApps
+    .filter((a) => a.stats.durationMs > slowThresholdMs)
+    .map((a) => ({ id: a.id, name: a.name, durationMs: a.stats.durationMs, filesProcessed: a.stats.filesProcessed }))
+    .sort((a, b) => b.durationMs - a.durationMs);
+
   staleApps.sort((a, b) => (b.daysSinceScan === null ? Infinity : b.daysSinceScan) - (a.daysSinceScan === null ? Infinity : a.daysSinceScan));
 
-  res.json({ totalApps: apps.length, byStatus, byEnvironment, bySeverity, totalActiveIssues, staleApps, staleDaysThreshold: STALE_DAYS });
+  res.json({
+    totalApps: apps.length, byStatus, byEnvironment, bySeverity, totalActiveIssues, staleApps, staleDaysThreshold: STALE_DAYS,
+    slowApps, avgDurationMs,
+  });
 });
 
 // Portfolio scan calendar: when is every app next due for an auto-rescan.
