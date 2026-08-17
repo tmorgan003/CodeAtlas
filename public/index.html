@@ -186,8 +186,23 @@
       <button type="button" class="secondary" id="portfolio-export-btn">Export Portfolio Static Site</button>
       <button type="button" class="secondary" id="compare-apps-btn">Compare Two Apps</button>
       <button type="button" class="secondary" id="scan-calendar-btn">Scan Calendar</button>
+      <button type="button" class="secondary" id="manage-tags-btn">Manage Tags</button>
       <p class="form-status" id="portfolio-export-status"></p>
       <div id="dashboard-content"></div>
+    </section>
+
+    <section class="panel" id="tags-panel" hidden>
+      <button id="close-tags" class="link-button">&larr; Back to list</button>
+      <h2>Manage Tags</h2>
+      <p style="color:var(--muted);font-size:0.85rem">Rename, merge, or delete a tag across every app that uses it.</p>
+      <div class="path-input-row">
+        <input type="text" id="tags-merge-target" placeholder="Merge selected into... (e.g. Backend)" />
+        <button type="button" id="tags-merge-btn">Merge Selected</button>
+      </div>
+      <p class="form-status" id="tags-status"></p>
+      <div class="table-scroll">
+        <table id="tags-table"><tr><th></th><th>Tag</th><th>Apps</th><th></th></tr></table>
+      </div>
     </section>
 
     <section class="panel" id="scan-calendar-panel" hidden>

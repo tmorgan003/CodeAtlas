@@ -984,6 +984,131 @@ closeTechStackBtn.addEventListener('click', () => {
   listPanel.hidden = false;
 });
 
+// ---- Manage tags (Feature 19) ----
+
+const manageTagsBtn = document.getElementById('manage-tags-btn');
+const tagsPanel = document.getElementById('tags-panel');
+const closeTagsBtn = document.getElementById('close-tags');
+const tagsTable = document.getElementById('tags-table');
+const tagsMergeTarget = document.getElementById('tags-merge-target');
+const tagsMergeBtn = document.getElementById('tags-merge-btn');
+const tagsStatus = document.getElementById('tags-status');
+
+async function loadTagsPanel() {
+  tagsTable.innerHTML = '<tr><th></th><th>Tag</th><th>Apps</th><th></th></tr>';
+  const tags = await fetch('/api/apps/tags').then((r) => r.json());
+  if (!tags.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 4;
+    td.className = 'empty-state';
+    td.textContent = 'No tags in use yet.';
+    tr.appendChild(td);
+    tagsTable.appendChild(tr);
+    return;
+  }
+  for (const t of tags) {
+    const tr = document.createElement('tr');
+
+    const checkTd = document.createElement('td');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'tag-merge-checkbox';
+    checkbox.dataset.tag = t.tag;
+    checkTd.appendChild(checkbox);
+
+    const nameTd = document.createElement('td');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = t.tag;
+    nameInput.addEventListener('blur', async () => {
+      const newTag = nameInput.value.trim();
+      if (!newTag || newTag === t.tag) { nameInput.value = t.tag; return; }
+      tagsStatus.classList.remove('success', 'error');
+      const res = await fetch(`/api/apps/tags/${encodeURIComponent(t.tag)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newTag }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        tagsStatus.textContent = 'Error: ' + body.error;
+        tagsStatus.classList.add('error');
+        nameInput.value = t.tag;
+        return;
+      }
+      tagsStatus.textContent = `Renamed "${t.tag}" to "${newTag}" on ${body.updatedCount} app(s).`;
+      tagsStatus.classList.add('success');
+      await refreshList();
+      loadTagsPanel();
+    });
+    nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameInput.blur(); });
+    nameTd.appendChild(nameInput);
+
+    const appsTd = document.createElement('td');
+    for (const a of t.apps) appsTd.appendChild(techChip(a));
+
+    const actionTd = document.createElement('td');
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'secondary';
+    removeBtn.textContent = 'Delete';
+    removeBtn.addEventListener('click', async () => {
+      tagsStatus.classList.remove('success', 'error');
+      const res = await fetch(`/api/apps/tags/${encodeURIComponent(t.tag)}`, { method: 'DELETE' });
+      const body = await res.json();
+      tagsStatus.textContent = `Deleted "${t.tag}" from ${body.updatedCount} app(s).`;
+      tagsStatus.classList.add('success');
+      await refreshList();
+      loadTagsPanel();
+    });
+    actionTd.appendChild(removeBtn);
+
+    tr.append(checkTd, nameTd, appsTd, actionTd);
+    tagsTable.appendChild(tr);
+  }
+}
+
+manageTagsBtn.addEventListener('click', () => {
+  listPanel.hidden = true;
+  detailPanel.hidden = true;
+  tagsPanel.hidden = false;
+  tagsStatus.textContent = '';
+  tagsStatus.classList.remove('success', 'error');
+  loadTagsPanel();
+});
+
+closeTagsBtn.addEventListener('click', () => {
+  tagsPanel.hidden = true;
+  listPanel.hidden = false;
+});
+
+tagsMergeBtn.addEventListener('click', async () => {
+  const target = tagsMergeTarget.value.trim();
+  const selected = Array.from(document.querySelectorAll('.tag-merge-checkbox:checked')).map((cb) => cb.dataset.tag);
+  tagsStatus.classList.remove('success', 'error');
+  if (!target || !selected.length) {
+    tagsStatus.textContent = 'Pick a target name and check at least one tag to merge.';
+    tagsStatus.classList.add('error');
+    return;
+  }
+  try {
+    const res = await fetch('/api/apps/tags/merge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceTags: selected, targetTag: target }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+    tagsStatus.textContent = `Merged ${selected.length} tag(s) into "${target}" on ${body.updatedCount} app(s).`;
+    tagsStatus.classList.add('success');
+    tagsMergeTarget.value = '';
+    await refreshList();
+    loadTagsPanel();
+  } catch (err) {
+    tagsStatus.textContent = 'Error: ' + err.message;
+    tagsStatus.classList.add('error');
+  }
+});
+
 // ---- Scan calendar ----
 
 const scanCalendarBtn = document.getElementById('scan-calendar-btn');

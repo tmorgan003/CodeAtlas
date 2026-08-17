@@ -277,6 +277,65 @@ router.get('/scan-queue', (req, res) => {
   res.json(scanQueue.queueStats());
 });
 
+// Feature 19: tag management — tags are free text on each app (no separate
+// store, unlike owners.js), so this aggregates them live from db.loadAll()
+// rather than maintaining a parallel list that could drift. Registered
+// before /:id for the same reason as the other list-level routes.
+router.get('/tags', (req, res) => {
+  const apps = db.loadAll().filter((a) => !a.archived);
+  const tagMap = new Map();
+  for (const app of apps) {
+    for (const tag of app.tags || []) {
+      if (!tagMap.has(tag)) tagMap.set(tag, []);
+      tagMap.get(tag).push({ id: app.id, name: app.name });
+    }
+  }
+  const tags = [...tagMap.entries()]
+    .map(([tag, taggedApps]) => ({ tag, apps: taggedApps, count: taggedApps.length }))
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  res.json(tags);
+});
+
+router.patch('/tags/:tag', (req, res) => {
+  const oldTag = req.params.tag;
+  const newTag = (req.body && req.body.newTag || '').trim();
+  if (!newTag) return res.status(400).json({ error: 'newTag is required' });
+  let updatedCount = 0;
+  for (const app of db.loadAll()) {
+    if (!app.tags || !app.tags.includes(oldTag)) continue;
+    db.update(app.id, { tags: [...new Set(app.tags.map((t) => (t === oldTag ? newTag : t)))] });
+    updatedCount += 1;
+  }
+  res.json({ tag: newTag, updatedCount });
+});
+
+router.post('/tags/merge', (req, res) => {
+  const { sourceTags, targetTag } = req.body || {};
+  const target = (targetTag || '').trim();
+  if (!target || !Array.isArray(sourceTags) || !sourceTags.length) {
+    return res.status(400).json({ error: 'sourceTags (array) and targetTag are required' });
+  }
+  const sourceSet = new Set(sourceTags);
+  let updatedCount = 0;
+  for (const app of db.loadAll()) {
+    if (!app.tags || !app.tags.some((t) => sourceSet.has(t))) continue;
+    db.update(app.id, { tags: [...new Set(app.tags.map((t) => (sourceSet.has(t) ? target : t)))] });
+    updatedCount += 1;
+  }
+  res.json({ tag: target, updatedCount });
+});
+
+router.delete('/tags/:tag', (req, res) => {
+  const tag = req.params.tag;
+  let updatedCount = 0;
+  for (const app of db.loadAll()) {
+    if (!app.tags || !app.tags.includes(tag)) continue;
+    db.update(app.id, { tags: app.tags.filter((t) => t !== tag) });
+    updatedCount += 1;
+  }
+  res.json({ updatedCount });
+});
+
 router.get('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
