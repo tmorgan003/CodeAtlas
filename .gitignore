@@ -13,6 +13,7 @@ data/mask-rules/
 data/custom-wiki-sections/
 data/suppression-rules/
 data/onboarding/
+data/wiki-overrides/
 data/graphs/
 data/wiki-exports/
 data/portfolio-export/

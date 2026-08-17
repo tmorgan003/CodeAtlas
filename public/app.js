@@ -2932,18 +2932,113 @@ function truncateFileColumns(container) {
   }
 }
 
+// Feature 16: inline wiki editing beyond the Data Dictionary. Change-Log.md
+// and Progress.md are auto-generated logs (scan mechanics, not authored
+// prose) — editing them wouldn't make sense, since the next scan's log
+// entry would just get appended after whatever a human wrote. Every other
+// generated page (Home, Architecture, Data Model, Setup, and any
+// monorepo sub-package's copies of the same) is eligible.
+const WIKI_EDIT_EXCLUDED = new Set(['Change-Log.md', 'Progress.md']);
+
+function isWikiPageEditable(wikiPath) {
+  const basename = wikiPath.includes('/') ? wikiPath.slice(wikiPath.lastIndexOf('/') + 1) : wikiPath;
+  return !WIKI_EDIT_EXCLUDED.has(basename);
+}
+
 async function loadWikiPage(id, wikiPath) {
   try {
-    const { path: resolvedPath, content } = await api(`/${id}/wiki-file?path=${encodeURIComponent(wikiPath)}`);
+    const { path: resolvedPath, content, overridden, updatedAt } = await api(`/${id}/wiki-file?path=${encodeURIComponent(wikiPath)}`);
     currentWikiDir = resolvedPath.includes('/') ? resolvedPath.slice(0, resolvedPath.lastIndexOf('/')) : '';
     const html = renderMarkdown(content, currentWikiDir, id);
     withViewTransition(() => {
       wikiView.innerHTML = html;
       if (wikiPath === 'Data-Model.md') truncateFileColumns(wikiView);
+      if (isWikiPageEditable(resolvedPath)) {
+        wikiView.appendChild(renderWikiEditToolbar(id, resolvedPath, content, overridden, updatedAt));
+      }
     });
   } catch (err) {
     wikiView.textContent = 'Could not load page: ' + err.message;
   }
+}
+
+function renderWikiEditToolbar(id, pagePath, content, overridden, updatedAt) {
+  const wrap = document.createElement('div');
+  wrap.className = 'wiki-edit-toolbar';
+
+  if (overridden) {
+    const banner = document.createElement('p');
+    banner.className = 'wiki-override-banner';
+    banner.textContent = `Manually edited (${new Date(updatedAt).toLocaleString()}) — showing the saved version, not regenerated from the latest scan.`;
+    wrap.appendChild(banner);
+  }
+
+  const canEdit = hasRole('editor');
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'secondary';
+  editBtn.textContent = overridden ? 'Edit Saved Version' : 'Edit This Page';
+  editBtn.disabled = !canEdit;
+  if (!canEdit) editBtn.title = 'Requires the "editor" role or higher to edit.';
+  editBtn.addEventListener('click', () => renderWikiPageEditor(id, pagePath, content));
+  wrap.appendChild(editBtn);
+
+  if (overridden) {
+    const revertBtn = document.createElement('button');
+    revertBtn.type = 'button';
+    revertBtn.className = 'secondary';
+    revertBtn.textContent = 'Revert to Generated';
+    revertBtn.disabled = !canEdit;
+    if (!canEdit) revertBtn.title = 'Requires the "editor" role or higher.';
+    revertBtn.addEventListener('click', async () => {
+      await api(`/${id}/wiki-file/override?path=${encodeURIComponent(pagePath)}`, { method: 'DELETE' });
+      loadWikiPage(id, pagePath);
+    });
+    wrap.appendChild(revertBtn);
+  }
+
+  return wrap;
+}
+
+function renderWikiPageEditor(id, pagePath, content) {
+  withViewTransition(() => {
+    wikiView.innerHTML = '';
+
+    const note = document.createElement('p');
+    note.className = 'bulk-help';
+    note.textContent = 'Editing the raw Markdown for this page. Saving overrides the generated version — it persists across rescans until you revert it.';
+
+    const textarea = document.createElement('textarea');
+    textarea.value = content;
+    textarea.rows = 20;
+    textarea.className = 'custom-section-textarea';
+
+    const status = document.createElement('p');
+    status.className = 'form-status';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.textContent = 'Save';
+    saveBtn.addEventListener('click', async () => {
+      status.classList.remove('success', 'error');
+      status.textContent = 'Saving…';
+      try {
+        await api(`/${id}/wiki-file/override`, { method: 'POST', body: JSON.stringify({ path: pagePath, content: textarea.value }) });
+        loadWikiPage(id, pagePath);
+      } catch (err) {
+        status.textContent = 'Error: ' + err.message;
+        status.classList.add('error');
+      }
+    });
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => loadWikiPage(id, pagePath));
+
+    wikiView.append(note, textarea, status, saveBtn, cancelBtn);
+  });
 }
 
 function escapeHtmlText(s) {

@@ -12,6 +12,7 @@ const customSecretRules = require('../scanner/customSecretRules');
 const customWikiSections = require('../scanner/customWikiSections');
 const suppressionRules = require('../scanner/suppressionRules');
 const onboarding = require('../scanner/onboarding');
+const wikiOverrides = require('../scanner/wikiOverrides');
 const graph = require('../scanner/graph');
 const { searchWiki } = require('../scanner/wikiSearch');
 const progressBus = require('../scanner/progressBus');
@@ -417,6 +418,15 @@ router.get('/:id/wiki-file', (req, res) => {
   const wikiDir = path.join(app.localPath, 'wiki');
   const requested = req.query.path || 'Home.md';
 
+  // Feature 16: inline wiki editing beyond the Data Dictionary — a saved
+  // full-page override (see wikiOverrides.js) takes priority over the
+  // freshly generated file on disk, same precedence as a dictionary
+  // override over an auto-detected placeholder.
+  const pageOverrides = wikiOverrides.loadOverrides(app.id);
+  if (pageOverrides[requested]) {
+    return res.json({ path: requested, content: pageOverrides[requested].content, overridden: true, updatedAt: pageOverrides[requested].updatedAt });
+  }
+
   // Feature 9: monorepo sub-package links in Home.md's "Packages" section
   // (see wikiWriter.js) point outside this app's own wiki/ dir — each
   // sub-package is scanned independently with its own wiki/ under the
@@ -439,7 +449,28 @@ router.get('/:id/wiki-file', (req, res) => {
   const resolved = candidates.find((p) => fs.existsSync(p));
   if (!resolved) return res.status(404).json({ error: 'File not found' });
   const content = fs.readFileSync(resolved, 'utf8');
-  res.json({ path: requested, content });
+  res.json({ path: requested, content, overridden: false });
+});
+
+// Feature 16: save/clear a full-page override for a generated wiki page
+// (see wiki-file above for how it's served, and wikiOverrides.js for why
+// this is a whole-page override rather than a field-level one).
+router.post('/:id/wiki-file/override', requireRole('editor'), (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { path: pagePath, content } = req.body || {};
+  if (!pagePath) return res.status(400).json({ error: 'path is required' });
+  const saved = wikiOverrides.setOverride(app.id, pagePath, content || '');
+  res.json({ path: pagePath, content: saved.content, overridden: true, updatedAt: saved.updatedAt });
+});
+
+router.delete('/:id/wiki-file/override', requireRole('editor'), (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const pagePath = req.query.path;
+  if (!pagePath) return res.status(400).json({ error: 'path is required' });
+  wikiOverrides.clearOverride(app.id, pagePath);
+  res.status(204).end();
 });
 
 // Compact scan-over-time view: stats per past scan, newest first.
