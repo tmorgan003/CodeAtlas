@@ -1543,6 +1543,48 @@ suppressionRuleAddBtn.addEventListener('click', async () => {
 });
 suppressionRuleNewPattern.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); suppressionRuleAddBtn.click(); } });
 
+// ---- Onboarding checklist (Feature 13) ----
+
+const onboardingChecklistEl = document.getElementById('onboarding-checklist');
+const onboardingSummaryBadge = document.getElementById('onboarding-summary-badge');
+
+function renderOnboardingChecklist(appId, checklist) {
+  onboardingSummaryBadge.textContent = `${checklist.doneCount}/${checklist.total}`;
+  onboardingSummaryBadge.className = 'tag-badge ' + (checklist.complete ? 'status-done' : '');
+  onboardingChecklistEl.innerHTML = '';
+  for (const item of checklist.items) {
+    const li = document.createElement('li');
+    const label = document.createElement('label');
+    label.className = 'checkbox-label';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = item.done;
+    if (item.auto) {
+      checkbox.disabled = true;
+      label.title = 'Derived automatically from this app\'s Owner/Tags fields — edit those above instead.';
+    } else {
+      checkbox.addEventListener('change', async () => {
+        const updated = await fetch(`/api/apps/${appId}/onboarding`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [item.id]: checkbox.checked }),
+        }).then((r) => r.json());
+        renderOnboardingChecklist(appId, updated);
+      });
+    }
+    const text = document.createElement('span');
+    text.textContent = item.label + (item.auto ? ' (auto)' : '');
+    label.append(checkbox, text);
+    li.appendChild(label);
+    onboardingChecklistEl.appendChild(li);
+  }
+}
+
+async function loadOnboardingChecklist(appId) {
+  const checklist = await fetch(`/api/apps/${appId}/onboarding`).then((r) => r.json());
+  renderOnboardingChecklist(appId, checklist);
+}
+
 // ---- Detail view ----
 
 function fieldRow(label, value) {
@@ -1773,6 +1815,7 @@ async function openDetail(id) {
   loadIgnorePatterns(id);
   loadMaskRules(id);
   loadSuppressionRules(id);
+  loadOnboardingChecklist(id);
 
   if (app.status === 'Done' && app.wikiLink) {
     closeScanStream();

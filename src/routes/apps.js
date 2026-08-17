@@ -11,6 +11,7 @@ const customIgnore = require('../scanner/customIgnore');
 const customSecretRules = require('../scanner/customSecretRules');
 const customWikiSections = require('../scanner/customWikiSections');
 const suppressionRules = require('../scanner/suppressionRules');
+const onboarding = require('../scanner/onboarding');
 const graph = require('../scanner/graph');
 const { searchWiki } = require('../scanner/wikiSearch');
 const progressBus = require('../scanner/progressBus');
@@ -554,6 +555,22 @@ router.post('/:id/models/override', requireRole('editor'), (req, res) => {
   if (!modelName || !fieldName) return res.status(400).json({ error: 'modelName and fieldName are required' });
   const saved = dictionaryOverrides.setOverride(app.id, modelName, fieldName, description || '');
   res.json({ modelName, fieldName, description: saved });
+});
+
+// Feature 13: new-app onboarding checklist (see onboarding.js) — distinct
+// from Progress.md's directory-scan progress tracker.
+router.get('/:id/onboarding', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  res.json(onboarding.buildChecklist(app));
+});
+
+router.patch('/:id/onboarding', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { techStackConfirmed, firstScanReviewed } = req.body || {};
+  onboarding.setState(app.id, { techStackConfirmed, firstScanReviewed });
+  res.json(onboarding.buildChecklist(app));
 });
 
 // Custom wiki sections: team-added markdown pages (e.g. "Runbook") that
