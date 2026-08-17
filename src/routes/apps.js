@@ -108,6 +108,30 @@ router.post('/bulk', (req, res) => {
   res.status(created.length ? 201 : 400).json({ created, errors });
 });
 
+// Feature 7: every issue across every app in one list, so a user doesn't
+// have to drill into each app individually to see what's open portfolio-wide.
+// Registered before /:id for the same reason as /dashboard and /bulk above.
+router.get('/issues', (req, res) => {
+  const apps = db.loadAll();
+  const all = [];
+  for (const app of apps) {
+    const latest = history.getLatestSnapshot(app.id);
+    if (!latest) continue;
+    const triageMap = triage.loadTriage(app.id);
+    for (const issue of latest.issues) {
+      const fingerprint = triage.fingerprintIssue(issue);
+      all.push({
+        ...issue,
+        appId: app.id,
+        appName: app.name,
+        fingerprint,
+        triage: triageMap[fingerprint] || { state: 'open', note: '', assignee: '' },
+      });
+    }
+  }
+  res.json(all);
+});
+
 router.get('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });

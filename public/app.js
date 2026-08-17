@@ -465,6 +465,142 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
+// ---- Cross-app issue view ----
+
+const allIssuesBtn = document.getElementById('all-issues-btn');
+const crossIssuesPanel = document.getElementById('cross-issues-panel');
+const closeCrossIssuesBtn = document.getElementById('close-cross-issues');
+const crossIssuesContent = document.getElementById('cross-issues-content');
+const crossIssuesSearch = document.getElementById('cross-issues-search');
+const crossIssuesSeverity = document.getElementById('cross-issues-severity');
+const crossIssuesApp = document.getElementById('cross-issues-app');
+
+let allCrossIssues = [];
+
+function applyCrossIssuesFilters() {
+  const search = crossIssuesSearch.value.trim().toLowerCase();
+  const severity = crossIssuesSeverity.value;
+  const appId = crossIssuesApp.value;
+  const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+  const filtered = allCrossIssues
+    .filter((i) => i.triage.state === 'open' || i.triage.state === 'acknowledged')
+    .filter((i) => !severity || i.severity === severity)
+    .filter((i) => !appId || i.appId === appId)
+    .filter((i) => !search || `${i.category} ${i.file} ${i.summary}`.toLowerCase().includes(search))
+    .sort((a, b) => order[a.severity] - order[b.severity]);
+  renderCrossIssuesTable(filtered);
+}
+
+function renderCrossIssuesTable(issues) {
+  crossIssuesContent.innerHTML = '';
+  if (!issues.length) {
+    crossIssuesContent.innerHTML = '<p class="empty-state">No matching issues.</p>';
+    return;
+  }
+  const table = document.createElement('table');
+  table.className = 'cross-issues-table fit-container';
+  table.innerHTML = '<tr><th>Severity</th><th>App</th><th>Category</th><th>File</th><th>Line</th><th>Summary</th><th>Triage</th></tr>';
+  const SUMMARY_TRUNCATE_AT = 65;
+  for (const issue of issues) {
+    const tr = document.createElement('tr');
+
+    const severityTd = document.createElement('td');
+    const severityBadge = document.createElement('span');
+    severityBadge.className = 'severity-badge ' + (SEVERITY_BADGE_CLASS[issue.severity] || 'severity-low');
+    severityBadge.textContent = issue.severity;
+    severityTd.appendChild(severityBadge);
+    tr.appendChild(severityTd);
+
+    const appTd = document.createElement('td');
+    appTd.className = 'cell-category';
+    const appLink = document.createElement('a');
+    appLink.href = '#';
+    appLink.style.color = 'var(--accent-text)';
+    appLink.textContent = issue.appName;
+    appLink.title = issue.appName;
+    appLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      crossIssuesPanel.hidden = true;
+      openDetail(issue.appId).then(() => loadIssuesInteractive(issue.appId));
+    });
+    appTd.appendChild(appLink);
+    tr.appendChild(appTd);
+
+    const categoryTd = document.createElement('td');
+    categoryTd.className = 'cell-category';
+    categoryTd.textContent = issue.category;
+    categoryTd.title = issue.category;
+    tr.appendChild(categoryTd);
+
+    const fileTd = document.createElement('td');
+    fileTd.className = 'cell-file';
+    fileTd.textContent = issue.file.split('/').pop();
+    fileTd.title = issue.file;
+    tr.appendChild(fileTd);
+
+    const lineTd = document.createElement('td');
+    lineTd.textContent = String(issue.line);
+    tr.appendChild(lineTd);
+
+    const summaryTd = document.createElement('td');
+    summaryTd.className = 'cell-summary';
+    const isLong = issue.summary.length > SUMMARY_TRUNCATE_AT;
+    summaryTd.textContent = isLong ? issue.summary.slice(0, SUMMARY_TRUNCATE_AT - 1).trimEnd() + '…' : issue.summary;
+    summaryTd.title = issue.summary;
+    tr.appendChild(summaryTd);
+
+    const triageTd = document.createElement('td');
+    const select = document.createElement('select');
+    for (const s of TRIAGE_STATES) {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      if (s === issue.triage.state) opt.selected = true;
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', async () => {
+      await fetch(`/api/apps/${issue.appId}/issues/triage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint: issue.fingerprint, state: select.value }),
+      });
+      await loadAllIssues();
+    });
+    triageTd.appendChild(select);
+    tr.appendChild(triageTd);
+
+    table.appendChild(tr);
+  }
+  const scroll = document.createElement('div');
+  scroll.className = 'table-scroll';
+  scroll.appendChild(table);
+  crossIssuesContent.appendChild(scroll);
+}
+
+async function loadAllIssues() {
+  allCrossIssues = await fetch('/api/apps/issues').then((r) => r.json());
+  const apps = [...new Map(allCrossIssues.map((i) => [i.appId, i.appName])).entries()];
+  const current = crossIssuesApp.value;
+  crossIssuesApp.innerHTML = '<option value="">All apps</option>' + apps.map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
+  if (apps.some(([id]) => id === current)) crossIssuesApp.value = current;
+  applyCrossIssuesFilters();
+}
+
+allIssuesBtn.addEventListener('click', async () => {
+  listPanel.hidden = true;
+  detailPanel.hidden = true;
+  crossIssuesPanel.hidden = false;
+  crossIssuesContent.innerHTML = '<p>Loading…</p>';
+  await loadAllIssues();
+});
+
+closeCrossIssuesBtn.addEventListener('click', () => {
+  crossIssuesPanel.hidden = true;
+  listPanel.hidden = false;
+});
+
+[crossIssuesSearch, crossIssuesSeverity, crossIssuesApp].forEach((el) => el.addEventListener('input', applyCrossIssuesFilters));
+
 // ---- Bulk import ----
 
 const bulkTextarea = document.getElementById('bulk-textarea');

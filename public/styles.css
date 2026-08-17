@@ -307,6 +307,15 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
 .issues-table th:nth-child(4), .issues-table td:nth-child(4) { width: 7%; }
 .issues-table th:nth-child(5), .issues-table td:nth-child(5) { width: 37%; }
 .issues-table th:nth-child(6), .issues-table td:nth-child(6) { width: 18%; }
+.cross-issues-table th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cross-issues-table th:nth-child(1), .cross-issues-table td:nth-child(1) { width: 16%; }
+.cross-issues-table th:nth-child(2), .cross-issues-table td:nth-child(2) { width: 11%; }
+.cross-issues-table th:nth-child(3), .cross-issues-table td:nth-child(3) { width: 8%; }
+.cross-issues-table th:nth-child(4), .cross-issues-table td:nth-child(4) { width: 8%; }
+.cross-issues-table th:nth-child(5), .cross-issues-table td:nth-child(5) { width: 6%; }
+.cross-issues-table th:nth-child(6), .cross-issues-table td:nth-child(6) { width: 33%; }
+.cross-issues-table th:nth-child(7), .cross-issues-table td:nth-child(7) { width: 18%; }
+.cross-issues-table td.cell-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .issue-detail { margin: 0.3rem 0; grid-template-columns: 120px 1fr; }
 .issue-detail dd { white-space: pre-wrap; }
 .issue-detail dd input { max-width: 320px; margin-top: 0; }

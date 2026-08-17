@@ -111,7 +111,20 @@
 
     <section class="panel" id="dashboard-panel">
       <h2>Portfolio Overview</h2>
+      <button type="button" class="secondary" id="all-issues-btn">View All Issues</button>
       <div id="dashboard-content"></div>
+    </section>
+
+    <section class="panel" id="cross-issues-panel" hidden>
+      <button id="close-cross-issues" class="link-button">&larr; Back to list</button>
+      <h2>All Issues</h2>
+      <p style="color:var(--muted);font-size:0.85rem">Every open or acknowledged issue across all applications, sorted by severity.</p>
+      <div class="filter-bar">
+        <input type="search" id="cross-issues-search" placeholder="Search category/file/summary..." />
+        <select id="cross-issues-severity"><option value="">All severities</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select>
+        <select id="cross-issues-app"><option value="">All apps</option></select>
+      </div>
+      <div id="cross-issues-content"></div>
     </section>
 
     <section class="panel" id="list-panel">
