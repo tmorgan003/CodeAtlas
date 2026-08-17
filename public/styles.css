@@ -508,6 +508,12 @@ dd { margin: 0; word-break: break-word; }
 .wiki-view table { margin: 0.75rem 0; }
 .history-issues-flag { color: var(--err); font-weight: 700; }
 .graph-export-actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+.field-hint { color: var(--muted); font-weight: 400; font-size: 0.78rem; }
+.tracker-push-status { font-size: 0.8rem; color: var(--muted); }
+.tracker-push-status.error { color: var(--err); }
+#tracker-details { margin-top: 1rem; }
+#tracker-details summary h3 { display: inline; margin: 0; font-size: 1rem; }
+#tracker-details form { margin-top: 0.75rem; }
 .diff-picker-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
 .diff-picker-row label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--muted); margin-bottom: 0; }
 .diff-picker-row select { width: auto; margin-top: 0; }

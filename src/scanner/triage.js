@@ -80,4 +80,14 @@ function isDismissed(triageMap, issue) {
   return !!t && (t.state === 'false_positive' || t.state === 'fixed');
 }
 
-module.exports = { fingerprintIssue, loadTriage, saveTriage, setTriageState, setAssignee, isDismissed, VALID_STATES };
+// Feature 15: records where an issue was pushed to (GitHub Issues / Jira),
+// so the UI can show "already linked" instead of letting it be pushed twice.
+function setExternalRef(appId, fingerprint, ref) {
+  const map = loadTriage(appId);
+  const existing = map[fingerprint] || { state: 'open', note: '', assignee: '' };
+  map[fingerprint] = { ...existing, externalRef: ref, updatedAt: new Date().toISOString() };
+  saveTriage(appId, map);
+  return map[fingerprint];
+}
+
+module.exports = { fingerprintIssue, loadTriage, saveTriage, setTriageState, setAssignee, setExternalRef, isDismissed, VALID_STATES };

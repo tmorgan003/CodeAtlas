@@ -169,6 +169,38 @@
       <button id="close-detail" class="link-button">&larr; Back to list</button>
       <h2 id="detail-name"></h2>
       <dl id="detail-meta"></dl>
+
+      <details id="tracker-details">
+        <summary><h3>Issue Tracker Integration</h3></summary>
+        <form id="tracker-form">
+          <label>Tracker
+            <select name="trackerType">
+              <option value="none">None</option>
+              <option value="github">GitHub Issues</option>
+              <option value="jira">Jira</option>
+            </select>
+          </label>
+          <div class="row">
+            <label>Jira Base URL <span class="field-hint">(Jira only)</span>
+              <input type="text" name="trackerBaseUrl" placeholder="https://your-domain.atlassian.net" />
+            </label>
+            <label>Repo (owner/repo) or Project Key
+              <input type="text" name="trackerProjectOrRepo" placeholder="owner/repo or PROJ" />
+            </label>
+          </div>
+          <div class="row">
+            <label>Jira Email <span class="field-hint">(Jira only)</span>
+              <input type="text" name="trackerEmail" placeholder="you@company.com" />
+            </label>
+            <label>API Token / PAT
+              <input type="password" name="trackerToken" placeholder="stored as plain text — demo only" />
+            </label>
+          </div>
+          <button type="submit" class="secondary">Save Tracker Config</button>
+          <p class="form-status" id="tracker-form-status"></p>
+        </form>
+      </details>
+
       <div id="wiki-nav" class="wiki-nav" hidden>
         <span>Wiki:</span>
         <div id="wiki-links"></div>

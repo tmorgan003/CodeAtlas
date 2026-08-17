@@ -14,6 +14,7 @@ const { buildStaticSite } = require('../scanner/exportSite');
 const { buildPortfolioStaticSite } = require('../scanner/exportPortfolio');
 const { pushToGithubWiki } = require('../scanner/exportGithubWiki');
 const { isRepoLink } = require('../scanner/gitFetch');
+const { pushIssueToTracker } = require('../scanner/trackerLink');
 
 const router = express.Router();
 
@@ -177,7 +178,10 @@ router.post('/', (req, res) => {
 router.patch('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
-  const { purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled } = req.body || {};
+  const {
+    purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl,
+    failOnSeverity, digestEnabled, trackerType, trackerBaseUrl, trackerProjectOrRepo, trackerEmail, trackerToken,
+  } = req.body || {};
   const patch = {};
   if (purpose !== undefined) patch.purpose = purpose;
   if (owner !== undefined) patch.owner = owner;
@@ -193,6 +197,14 @@ router.patch('/:id', (req, res) => {
     patch.failOnSeverity = failOnSeverity;
   }
   if (digestEnabled !== undefined) patch.digestEnabled = !!digestEnabled;
+  if (trackerType !== undefined) {
+    if (!['none', 'github', 'jira'].includes(trackerType)) return res.status(400).json({ error: 'trackerType must be one of: none, github, jira' });
+    patch.trackerType = trackerType;
+  }
+  if (trackerBaseUrl !== undefined) patch.trackerBaseUrl = trackerBaseUrl;
+  if (trackerProjectOrRepo !== undefined) patch.trackerProjectOrRepo = trackerProjectOrRepo;
+  if (trackerEmail !== undefined) patch.trackerEmail = trackerEmail;
+  if (trackerToken !== undefined) patch.trackerToken = trackerToken;
   const updated = db.update(app.id, patch);
   res.json(updated);
 });
@@ -297,6 +309,26 @@ router.get('/:id/issues', (req, res) => {
     triage: triageMap[triage.fingerprintIssue(i)] || { state: 'open', note: '', assignee: '' },
   }));
   res.json(withTriage);
+});
+
+// Feature 15: push a single issue to the app's configured external tracker
+// (GitHub Issues or Jira) and remember the resulting link so it isn't
+// pushed twice from the UI.
+router.post('/:id/issues/push-to-tracker', async (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { fingerprint } = req.body || {};
+  if (!fingerprint) return res.status(400).json({ error: 'fingerprint is required' });
+  const latest = history.getLatestSnapshot(app.id);
+  const issue = latest && latest.issues.find((i) => triage.fingerprintIssue(i) === fingerprint);
+  if (!issue) return res.status(404).json({ error: 'Issue not found in the latest scan' });
+  try {
+    const ref = await pushIssueToTracker(app, issue);
+    const entry = triage.setExternalRef(app.id, fingerprint, { type: app.trackerType, ...ref });
+    res.json(entry);
+  } catch (err) {
+    res.status(502).json({ error: String((err && err.message) || err) });
+  }
 });
 
 router.post('/:id/issues/triage', (req, res) => {

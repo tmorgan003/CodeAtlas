@@ -20,6 +20,8 @@ const browseCurrentPath = document.getElementById('browse-current-path');
 const browseList = document.getElementById('browse-list');
 const browseCancelBtn = document.getElementById('browse-cancel');
 const browseSelectBtn = document.getElementById('browse-select');
+const trackerForm = document.getElementById('tracker-form');
+const trackerFormStatus = document.getElementById('tracker-form-status');
 
 let currentDetailId = null;
 let currentWikiDir = '';
@@ -885,6 +887,15 @@ async function openDetail(id) {
     detailMeta.append(...fieldRow('Wiki Location', app.wikiLink));
     detailMeta.append(...fieldRow('Last Scanned', app.scannedAt ? new Date(app.scannedAt).toLocaleString() : ''));
     if (app.error) detailMeta.append(...fieldRow('Error', app.error));
+
+    trackerForm.trackerType.value = app.trackerType || 'none';
+    trackerForm.trackerBaseUrl.value = app.trackerBaseUrl || '';
+    trackerForm.trackerProjectOrRepo.value = app.trackerProjectOrRepo || '';
+    trackerForm.trackerEmail.value = app.trackerEmail || '';
+    trackerForm.trackerToken.value = app.trackerToken || '';
+    trackerFormStatus.textContent = '';
+    trackerFormStatus.classList.remove('success', 'error');
+
     wikiView.innerHTML = '';
   });
 
@@ -904,6 +915,23 @@ async function openDetail(id) {
     wikiView.textContent = 'No wiki yet — run a scan.';
   }
 }
+
+trackerForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!currentDetailId) return;
+  trackerFormStatus.classList.remove('success', 'error');
+  trackerFormStatus.textContent = 'Saving…';
+  const data = Object.fromEntries(new FormData(trackerForm).entries());
+  try {
+    await api(`/${currentDetailId}`, { method: 'PATCH', body: JSON.stringify(data) });
+    trackerFormStatus.textContent = 'Saved.';
+    trackerFormStatus.classList.add('success');
+    setTimeout(() => { trackerFormStatus.textContent = ''; trackerFormStatus.classList.remove('success'); }, 2000);
+  } catch (err) {
+    trackerFormStatus.textContent = 'Error: ' + err.message;
+    trackerFormStatus.classList.add('error');
+  }
+});
 
 function wikiNavGroup(items) {
   const group = document.createElement('div');
@@ -975,7 +1003,7 @@ const SEVERITY_BADGE_CLASS = { Critical: 'severity-critical', High: 'severity-hi
 
 async function loadIssuesInteractive(id) {
   try {
-    const issues = await api(`/${id}/issues`);
+    const [issues, app] = await Promise.all([api(`/${id}/issues`), api(`/${id}`)]);
     if (!issues.length) {
       withViewTransition(() => { wikiView.innerHTML = '<p>No issues recorded yet — run a scan first.</p>'; });
       return;
@@ -1085,6 +1113,46 @@ async function loadIssuesInteractive(id) {
       assigneeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') assigneeInput.blur(); });
       assigneeDd.appendChild(assigneeInput);
       dl.append(assigneeDt, assigneeDd);
+
+      // Feature 15: push this issue to the app's configured external
+      // tracker (GitHub Issues / Jira). Hidden entirely when no tracker is
+      // configured; once linked, shows a link instead of a push button so
+      // it can't be filed twice from here.
+      if (app.trackerType && app.trackerType !== 'none') {
+        const trackerDt = document.createElement('dt');
+        trackerDt.textContent = 'Tracker';
+        const trackerDd = document.createElement('dd');
+        if (issue.triage.externalRef && issue.triage.externalRef.url) {
+          const link = document.createElement('a');
+          link.href = issue.triage.externalRef.url;
+          link.target = '_blank';
+          link.rel = 'noopener';
+          link.textContent = `View in ${issue.triage.externalRef.type === 'jira' ? 'Jira' : 'GitHub'} (${issue.triage.externalRef.id}) ↗`;
+          trackerDd.appendChild(link);
+        } else {
+          const pushBtn = document.createElement('button');
+          pushBtn.type = 'button';
+          pushBtn.className = 'secondary';
+          pushBtn.textContent = `Push to ${app.trackerType === 'jira' ? 'Jira' : 'GitHub'}`;
+          const pushStatus = document.createElement('span');
+          pushStatus.className = 'tracker-push-status';
+          pushBtn.addEventListener('click', async () => {
+            pushBtn.disabled = true;
+            pushStatus.textContent = 'Pushing…';
+            pushStatus.className = 'tracker-push-status';
+            try {
+              await api(`/${id}/issues/push-to-tracker`, { method: 'POST', body: JSON.stringify({ fingerprint: issue.fingerprint }) });
+              loadIssuesInteractive(id);
+            } catch (err) {
+              pushStatus.textContent = 'Error: ' + err.message;
+              pushStatus.className = 'tracker-push-status error';
+              pushBtn.disabled = false;
+            }
+          });
+          trackerDd.append(pushBtn, document.createTextNode(' '), pushStatus);
+        }
+        dl.append(trackerDt, trackerDd);
+      }
 
       detailTd.appendChild(dl);
       detailTr.appendChild(detailTd);
