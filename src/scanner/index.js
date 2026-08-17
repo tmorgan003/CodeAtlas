@@ -7,6 +7,7 @@ const { detectDataModels } = require('./dataLayer');
 const { detectRoutes } = require('./processFlows');
 const { scanFile, checkKnownVulnerableDeps, findDeadCode } = require('./issues');
 const { runNpmAudit } = require('./npmAudit');
+const { checkLicenses } = require('./licenseCheck');
 const { buildEnrichment } = require('./deepMode');
 const { CODE_EXTENSIONS, BINARY_EXTENSIONS, SKIP_FILES } = require('./ignore');
 const customIgnore = require('./customIgnore');
@@ -251,6 +252,25 @@ async function runScan(rootPath, meta, onProgress) {
           suggestedFix: 'Run `npm audit` manually on this machine for full, current vulnerability coverage.',
         });
       }
+    }
+
+    // Feature 15: license compliance — flags copyleft, missing, or
+    // unrecognized dependency licenses. Reads node_modules directly, so it
+    // needs dependencies actually installed (no network call either way).
+    if (onProgress) onProgress('Checking dependency licenses...');
+    const licenseIssues = checkLicenses(rootPath);
+    if (licenseIssues) {
+      ctx.allIssues.push(...licenseIssues);
+    } else {
+      ctx.allIssues.push({
+        file: 'package.json',
+        line: 1,
+        severity: 'Low',
+        category: 'Scan Limitation',
+        source: 'dependency-audit',
+        summary: 'License compliance could not be checked — dependencies are not installed (no node_modules found).',
+        suggestedFix: 'Run `npm install` on this machine, then rescan for license compliance coverage.',
+      });
     }
   }
 
