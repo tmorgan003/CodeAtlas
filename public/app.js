@@ -465,6 +465,40 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
+// ---- Bulk import ----
+
+const bulkTextarea = document.getElementById('bulk-textarea');
+const bulkSubmitBtn = document.getElementById('bulk-submit');
+const bulkStatus = document.getElementById('bulk-status');
+
+bulkSubmitBtn.addEventListener('click', async () => {
+  const text = bulkTextarea.value;
+  if (!text.trim()) return;
+  bulkStatus.classList.remove('success', 'error');
+  bulkStatus.textContent = 'Importing...';
+  bulkSubmitBtn.disabled = true;
+  try {
+    const res = await fetch('/api/apps/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const body = await res.json();
+    if (!res.ok && !body.created) throw new Error(body.error || `Request failed (${res.status})`);
+    const parts = [`${body.created.length} app(s) added`];
+    if (body.errors.length) parts.push(`${body.errors.length} line(s) failed: ` + body.errors.map((e) => `line ${e.line} (${e.error})`).join('; '));
+    bulkStatus.textContent = parts.join(' — ');
+    bulkStatus.classList.add(body.errors.length ? 'error' : 'success');
+    if (body.created.length) bulkTextarea.value = '';
+    await refreshList();
+  } catch (err) {
+    bulkStatus.textContent = 'Error: ' + err.message;
+    bulkStatus.classList.add('error');
+  } finally {
+    bulkSubmitBtn.disabled = false;
+  }
+});
+
 // ---- Detail view ----
 
 function fieldRow(label, value) {

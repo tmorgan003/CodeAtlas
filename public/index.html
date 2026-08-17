@@ -89,6 +89,16 @@
         <p class="form-status" id="form-status"></p>
         </form>
       </details>
+
+      <details id="bulk-details">
+        <summary><h2>Bulk Import</h2></summary>
+        <div class="bulk-import">
+          <p class="bulk-help">One app per line — either just a path/repo, or <code>name,pathOrRepo,environment,owner,tags</code>. Lines starting with # are ignored.</p>
+          <textarea id="bulk-textarea" rows="6" placeholder="C:\path\to\app1&#10;https://github.com/org/repo2.git&#10;Billing API,C:\path\to\billing,Production,Platform Team,backend"></textarea>
+          <button type="button" id="bulk-submit">Import Apps</button>
+          <p class="form-status" id="bulk-status"></p>
+        </div>
+      </details>
     </section>
 
     <section class="panel" id="dashboard-panel">

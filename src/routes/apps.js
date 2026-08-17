@@ -64,6 +64,50 @@ router.get('/dashboard', (req, res) => {
   res.json({ totalApps: apps.length, byStatus, byEnvironment, bySeverity, totalActiveIssues, staleApps, staleDaysThreshold: STALE_DAYS });
 });
 
+// Bulk registration: one app per line, either a bare path/repo (name is
+// derived from the last path segment) or a CSV row
+// "name,pathOrRepo,environment,owner,tags". Lets a team register a dozen
+// apps at once instead of one form submission at a time. Registered apps
+// start at "Not Started" — this only creates entries, it doesn't scan them.
+function deriveNameFromPath(pathOrRepo) {
+  const trimmed = pathOrRepo.replace(/[\\/]+$/, '');
+  const base = trimmed.split(/[\\/]/).pop() || trimmed;
+  return base.replace(/\.git$/i, '');
+}
+
+router.post('/bulk', (req, res) => {
+  const { text } = req.body || {};
+  if (!text || !text.trim()) {
+    return res.status(400).json({ error: 'text is required — one app per line, either a path/repo or name,pathOrRepo,environment,owner,tags' });
+  }
+  const lines = text.split('\n')
+    .map((l) => l.replace(/\r$/, '').trim())
+    .filter((l) => l && !l.startsWith('#'));
+
+  const created = [];
+  const errors = [];
+  for (const [i, line] of lines.entries()) {
+    try {
+      const parts = line.split(',').map((p) => p.trim());
+      let name, pathOrRepo, environment, owner, tags;
+      if (parts.length === 1) {
+        [pathOrRepo] = parts;
+      } else {
+        // Trailing parts (5+) are all tags rejoined, so a tags list with
+        // its own commas ("bulk,demo") isn't truncated to just the first one.
+        [name, pathOrRepo, environment, owner] = parts;
+        tags = parts.slice(4).join(',');
+      }
+      if (!pathOrRepo) throw new Error('missing path/repo');
+      if (!name) name = deriveNameFromPath(pathOrRepo);
+      created.push(db.create({ name, pathOrRepo, environment, owner, tags }));
+    } catch (err) {
+      errors.push({ line: i + 1, text: line, error: String((err && err.message) || err) });
+    }
+  }
+  res.status(created.length ? 201 : 400).json({ created, errors });
+});
+
 router.get('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });

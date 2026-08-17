@@ -165,11 +165,15 @@ main {
 #list-panel, #detail-panel { view-transition-name: main-panel; }
 #wiki-view { view-transition-name: wiki-content; }
 
-#form-details summary {
+#form-details summary, #bulk-details summary {
   cursor: pointer;
 }
-#form-details summary h2 { display: inline; margin: 0; }
+#form-details summary h2, #bulk-details summary h2 { display: inline; margin: 0; }
 #form-details form { margin-top: 1rem; }
+#bulk-details { margin-top: 1rem; }
+.bulk-import { margin-top: 1rem; }
+.bulk-help { color: var(--muted); font-size: 0.82rem; margin-top: 0; }
+.bulk-import textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.82rem; margin-bottom: 0.6rem; }
 
 form label {
   display: block;
