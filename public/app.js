@@ -160,6 +160,209 @@ async function updateDeepScanEstimate() {
 deepScanCheckbox.addEventListener('change', updateDeepScanEstimate);
 pathInput.addEventListener('blur', updateDeepScanEstimate);
 
+// ---- Auth (basic RBAC: viewer < editor < admin) ----
+// Gates three actions: Data Dictionary edits (editor+), CI Gate Severity
+// changes (admin), and triggering/enabling a Deep scan (admin). Everything
+// else in the app stays readable without logging in — see src/store/users.js
+// for why this is intentionally minimal.
+
+const authWidget = document.getElementById('auth-widget');
+const loginModal = document.getElementById('login-modal');
+const loginForm = document.getElementById('login-form');
+const loginStatus = document.getElementById('login-status');
+const loginCancelBtn = document.getElementById('login-cancel');
+const usersDetails = document.getElementById('users-details');
+const failOnSeveritySelectEl = document.querySelector('#app-form select[name="failOnSeverity"]');
+
+const ROLE_RANK = { viewer: 0, editor: 1, admin: 2 };
+let currentUser = { username: null, role: 'viewer' };
+
+function hasRole(minRole) {
+  return ROLE_RANK[currentUser.role] >= ROLE_RANK[minRole];
+}
+
+// Disables/greys out the gated controls that are static (created once at
+// page load) based on the current role. Controls rebuilt per-render (the
+// detail panel's gate select, Data Dictionary inputs) check hasRole()
+// directly at build time instead — see openDetail and loadDictionaryInteractive.
+function applyRoleGating() {
+  const isAdmin = hasRole('admin');
+  deepScanCheckbox.disabled = !isAdmin;
+  deepScanCheckbox.title = isAdmin ? '' : 'Requires the "admin" role — log in as an admin to enable Deep scan.';
+  if (!isAdmin && deepScanCheckbox.checked) {
+    deepScanCheckbox.checked = false;
+    updateDeepScanEstimate();
+  }
+  if (failOnSeveritySelectEl) {
+    failOnSeveritySelectEl.disabled = !isAdmin;
+    failOnSeveritySelectEl.title = isAdmin ? '' : 'Requires the "admin" role to set anything other than the default (Critical).';
+    if (!isAdmin) failOnSeveritySelectEl.value = 'Critical';
+  }
+  applyFilters(); // re-render the app table so per-row Deep-scan gating (scanBtn) picks up the new role
+}
+
+function openLoginModal() {
+  loginStatus.textContent = '';
+  loginStatus.classList.remove('success', 'error');
+  loginForm.reset();
+  loginModal.hidden = false;
+}
+function closeLoginModal() { loginModal.hidden = true; }
+
+function renderAuthWidget() {
+  authWidget.innerHTML = '';
+  if (currentUser.username) {
+    const label = document.createElement('span');
+    label.innerHTML = `${currentUser.username} <span class="auth-role">(${currentUser.role})</span>`;
+    const logoutBtn = document.createElement('button');
+    logoutBtn.type = 'button';
+    logoutBtn.className = 'secondary';
+    logoutBtn.textContent = 'Log Out';
+    logoutBtn.addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      currentUser = { username: null, role: 'viewer' };
+      renderAuthWidget();
+      applyRoleGating();
+    });
+    authWidget.append(label, logoutBtn);
+  } else {
+    const loginBtn = document.createElement('button');
+    loginBtn.type = 'button';
+    loginBtn.className = 'secondary';
+    loginBtn.textContent = 'Log In';
+    loginBtn.addEventListener('click', openLoginModal);
+    authWidget.appendChild(loginBtn);
+  }
+  usersDetails.hidden = !hasRole('admin');
+}
+
+async function loadAuthState() {
+  currentUser = await fetch('/api/auth/me').then((r) => r.json()).catch(() => ({ username: null, role: 'viewer' }));
+  renderAuthWidget();
+  applyRoleGating();
+}
+
+loginCancelBtn.addEventListener('click', closeLoginModal);
+loginModal.addEventListener('click', (e) => { if (e.target === loginModal) closeLoginModal(); });
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = new FormData(loginForm);
+  loginStatus.classList.remove('success', 'error');
+  loginStatus.textContent = 'Logging in…';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: data.get('username'), password: data.get('password') }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+    currentUser = body;
+    closeLoginModal();
+    renderAuthWidget();
+    applyRoleGating();
+  } catch (err) {
+    loginStatus.textContent = 'Error: ' + err.message;
+    loginStatus.classList.add('error');
+  }
+});
+
+// ---- Manage users (admin only) ----
+
+const usersTable = document.getElementById('users-table');
+const userNewUsername = document.getElementById('user-new-username');
+const userNewPassword = document.getElementById('user-new-password');
+const userNewRole = document.getElementById('user-new-role');
+const userAddBtn = document.getElementById('user-add-btn');
+const userManageStatus = document.getElementById('user-manage-status');
+
+function renderUsers(list) {
+  usersTable.innerHTML = '<tr><th>Username</th><th>Role</th><th></th></tr>';
+  for (const u of list) {
+    const tr = document.createElement('tr');
+    const nameTd = document.createElement('td');
+    nameTd.textContent = u.username;
+
+    const roleTd = document.createElement('td');
+    const roleSelect = document.createElement('select');
+    for (const r of ['viewer', 'editor', 'admin']) {
+      const opt = document.createElement('option');
+      opt.value = r;
+      opt.textContent = r;
+      if (r === u.role) opt.selected = true;
+      roleSelect.appendChild(opt);
+    }
+    roleSelect.addEventListener('change', async () => {
+      await fetch(`/api/auth/users/${encodeURIComponent(u.username)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: roleSelect.value }),
+      });
+      if (u.username === currentUser.username) {
+        currentUser = { ...currentUser, role: roleSelect.value };
+        renderAuthWidget();
+        applyRoleGating();
+      }
+    });
+    roleTd.appendChild(roleSelect);
+
+    const actionTd = document.createElement('td');
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'link-button';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', async () => {
+      const res = await fetch(`/api/auth/users/${encodeURIComponent(u.username)}`, { method: 'DELETE' });
+      if (res.ok) {
+        loadUsers();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        userManageStatus.textContent = 'Error: ' + (body.error || 'Could not remove user');
+        userManageStatus.classList.add('error');
+      }
+    });
+    actionTd.appendChild(removeBtn);
+
+    tr.append(nameTd, roleTd, actionTd);
+    usersTable.appendChild(tr);
+  }
+}
+
+async function loadUsers() {
+  if (!hasRole('admin')) return;
+  const list = await fetch('/api/auth/users').then((r) => r.json()).catch(() => []);
+  renderUsers(list);
+}
+
+userAddBtn.addEventListener('click', async () => {
+  const username = userNewUsername.value.trim();
+  const password = userNewPassword.value;
+  const role = userNewRole.value;
+  userManageStatus.classList.remove('success', 'error');
+  try {
+    const res = await fetch('/api/auth/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+    userNewUsername.value = '';
+    userNewPassword.value = '';
+    userManageStatus.textContent = `Added "${username}".`;
+    userManageStatus.classList.add('success');
+    loadUsers();
+  } catch (err) {
+    userManageStatus.textContent = 'Error: ' + err.message;
+    userManageStatus.classList.add('error');
+  }
+});
+
+usersDetails.addEventListener('toggle', () => { if (usersDetails.open) loadUsers(); });
+
+loadAuthState();
+
 async function api(path, opts) {
   const res = await fetch(`/api/apps${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -242,7 +445,12 @@ function updateRow(refs, app) {
   refs.lastStatus = app.status;
 
   refs.scanBtn.textContent = app.status === 'Not Started' ? 'Scan' : 'Rescan';
-  refs.scanBtn.disabled = app.status === 'Scanning' || app.status === 'Queued';
+  // RBAC: a Deep-mode app burns real Claude usage on every run — only an
+  // admin can fire it, so a non-admin sees the button disabled up front
+  // instead of clicking it and hitting a 403.
+  const deepGated = app.scanMode === 'deep' && !hasRole('admin');
+  refs.scanBtn.disabled = app.status === 'Scanning' || app.status === 'Queued' || deepGated;
+  refs.scanBtn.title = deepGated ? 'This app is set to Deep scan — requires the "admin" role to trigger.' : '';
 
   // Feature 17: archived apps stay in the list (when "Show archived" is
   // on) but read as retired, not active — dimmed row, no flashing badge.
@@ -1322,6 +1530,8 @@ async function openDetail(id) {
     const gateDd = document.createElement('dd');
     const gateSelect = document.createElement('select');
     gateSelect.className = 'gate-select';
+    gateSelect.disabled = !hasRole('admin');
+    if (gateSelect.disabled) gateSelect.title = 'Requires the "admin" role to change.';
     for (const s of ['Critical', 'High', 'Medium', 'Low']) {
       const opt = document.createElement('option');
       opt.value = s;
@@ -1765,6 +1975,10 @@ async function loadDictionaryInteractive(id) {
           input.type = 'text';
           input.value = f.override || (f.description || '').replace('(auto-detected — add description)', '');
           input.placeholder = 'Add a description...';
+          if (!hasRole('editor')) {
+            input.disabled = true;
+            input.title = 'Requires the "editor" role or higher to edit.';
+          }
           const editedBadge = document.createElement('span');
           editedBadge.className = 'override-badge';
           editedBadge.textContent = 'Edited';

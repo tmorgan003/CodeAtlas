@@ -18,6 +18,7 @@ const { buildPortfolioStaticSite } = require('../scanner/exportPortfolio');
 const { pushToGithubWiki } = require('../scanner/exportGithubWiki');
 const { isRepoLink } = require('../scanner/gitFetch');
 const { pushIssueToTracker } = require('../scanner/trackerLink');
+const { requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -261,6 +262,16 @@ router.post('/', (req, res) => {
   if (owner && !owners.isValid(owner)) {
     return res.status(400).json({ error: `Unknown owner "${owner}" — add it via Manage Owners first, or leave this blank.` });
   }
+  // RBAC: Deep scan uses real Claude usage on every run, and a lenient CI
+  // gate quietly lets issues through — both are admin-only, even at
+  // creation time, not just when changed later via PATCH.
+  const role = req.user ? req.user.role : 'viewer';
+  if (scanMode === 'deep' && role !== 'admin') {
+    return res.status(403).json({ error: 'Deep scan requires the "admin" role — log in as an admin, or leave Scan Mode as Static.' });
+  }
+  if (failOnSeverity !== undefined && failOnSeverity !== 'Critical' && role !== 'admin') {
+    return res.status(403).json({ error: 'Changing the CI Gate Severity requires the "admin" role.' });
+  }
   const entry = db.create({ name, pathOrRepo, purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, failOnSeverity, digestEnabled, gitRef });
   res.status(201).json(entry);
 });
@@ -273,6 +284,14 @@ router.patch('/:id', (req, res) => {
     failOnSeverity, digestEnabled, trackerType, trackerBaseUrl, trackerProjectOrRepo, trackerEmail, trackerToken, gitRef,
     archived,
   } = req.body || {};
+  // RBAC: same admin-only gate as creation, for the same two settings.
+  const role = req.user ? req.user.role : 'viewer';
+  if (scanMode === 'deep' && app.scanMode !== 'deep' && role !== 'admin') {
+    return res.status(403).json({ error: 'Deep scan requires the "admin" role — log in as an admin, or leave Scan Mode as Static.' });
+  }
+  if (failOnSeverity !== undefined && failOnSeverity !== app.failOnSeverity && role !== 'admin') {
+    return res.status(403).json({ error: 'Changing the CI Gate Severity requires the "admin" role.' });
+  }
   const patch = {};
   if (purpose !== undefined) patch.purpose = purpose;
   if (owner !== undefined) {
@@ -316,6 +335,13 @@ router.delete('/:id', (req, res) => {
 router.post('/:id/scan', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
+  // RBAC: gate the trigger itself, not just the mode switch — an app whose
+  // scanMode was already set to "deep" by an admin still burns real Claude
+  // usage on every rescan, so a non-admin shouldn't be able to fire it.
+  const role = req.user ? req.user.role : 'viewer';
+  if (app.scanMode === 'deep' && role !== 'admin') {
+    return res.status(403).json({ error: 'Triggering a Deep scan requires the "admin" role.' });
+  }
 
   scanQueue.enqueueScan(app);
   res.json(db.getById(app.id)); // reflects whatever enqueueScan just set (Queued) or left as-is (about to run)
@@ -463,7 +489,7 @@ router.get('/:id/models', (req, res) => {
   res.json(withOverrides);
 });
 
-router.post('/:id/models/override', (req, res) => {
+router.post('/:id/models/override', requireRole('editor'), (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
   const { modelName, fieldName, description } = req.body || {};

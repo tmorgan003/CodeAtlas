@@ -26,8 +26,27 @@
       </h1>
       <p class="subtitle">Submit an app for static-analysis documentation scanning.</p>
     </div>
-    <button type="button" id="theme-toggle" class="theme-toggle">Theme</button>
+    <div class="header-actions">
+      <div id="auth-widget" class="auth-widget"></div>
+      <button type="button" id="theme-toggle" class="theme-toggle">Theme</button>
+    </div>
   </header>
+
+  <div id="login-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <h3>Log In</h3>
+      <form id="login-form">
+        <label>Username <input type="text" name="username" required autocomplete="username" /></label>
+        <label>Password <input type="password" name="password" required autocomplete="current-password" /></label>
+        <p class="form-status" id="login-status"></p>
+        <div class="modal-actions">
+          <button type="button" class="secondary" id="login-cancel">Cancel</button>
+          <button type="submit">Log In</button>
+        </div>
+      </form>
+      <p class="bulk-help">First run? The seeded account is <code>admin</code> / <code>admin</code> — change it from Manage Users after logging in.</p>
+    </div>
+  </div>
 
   <main>
     <section class="panel" id="form-panel">
@@ -127,6 +146,27 @@
           </div>
           <p class="form-status" id="owner-manage-status"></p>
           <div id="owners-list" class="severity-chip-row"></div>
+        </div>
+      </details>
+
+      <details id="users-details" hidden>
+        <summary><h2>Manage Users</h2></summary>
+        <div class="owners-manage">
+          <p class="bulk-help">Admin-only. Roles: <strong>viewer</strong> (read-only), <strong>editor</strong> (can edit the Data Dictionary), <strong>admin</strong> (also changes CI Gate Severity and triggers Deep scans).</p>
+          <div class="row">
+            <label>Username <input type="text" id="user-new-username" placeholder="e.g. jsmith" autocomplete="off" /></label>
+            <label>Password <input type="password" id="user-new-password" placeholder="min 4 characters" autocomplete="new-password" /></label>
+            <label>Role
+              <select id="user-new-role">
+                <option value="viewer">viewer</option>
+                <option value="editor" selected>editor</option>
+                <option value="admin">admin</option>
+              </select>
+            </label>
+          </div>
+          <button type="button" id="user-add-btn">Add User</button>
+          <p class="form-status" id="user-manage-status"></p>
+          <table id="users-table"><tr><th>Username</th><th>Role</th><th></th></tr></table>
         </div>
       </details>
     </section>
