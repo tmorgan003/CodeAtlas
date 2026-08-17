@@ -404,6 +404,9 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
 .status-queued { background: var(--badge-info-bg); color: var(--info); }
 .status-done { background: var(--badge-ok-bg); color: var(--ok); }
 .status-failed { background: var(--badge-err-bg); color: var(--err); }
+.scan-failed-box { border: 1px solid var(--err); border-radius: 8px; padding: 1rem 1.25rem; background: var(--badge-err-bg); }
+.scan-failed-box h3 { margin: 0 0 0.5rem; color: var(--err); }
+.scan-failed-message { font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; margin: 0 0 1rem; }
 
 /* Severity: an intensity ramp so a scan's findings are triage-able at a
    glance — Critical shares the alarm red used for a failed scan; High sits

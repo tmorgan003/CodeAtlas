@@ -692,7 +692,16 @@ async function loadDashboard() {
 }
 
 async function triggerScan(id) {
-  await api(`/${id}/scan`, { method: 'POST' });
+  try {
+    await api(`/${id}/scan`, { method: 'POST' });
+  } catch (err) {
+    // A rejected scan trigger (e.g. RBAC blocking a non-admin from a
+    // Deep-mode app) previously vanished as a silent unhandled rejection —
+    // surface it wherever the user can currently see it.
+    await refreshList();
+    if (currentDetailId === id) wikiView.textContent = 'Could not start scan: ' + err.message;
+    return;
+  }
   await refreshList();
   if (currentDetailId === id) await openDetail(id);
 }
@@ -2078,8 +2087,24 @@ async function openDetail(id) {
     wikiNav.hidden = true;
     attachScanStream(id);
   } else if (app.status === 'Failed') {
+    // Feature 20: distinct Failed handling — the full error detail and a
+    // one-click Retry Scan right where the user is already looking,
+    // instead of a bare "see error above" pointing back at the summary row.
     wikiNav.hidden = true;
-    wikiView.textContent = 'Last scan failed. See error above.';
+    wikiView.innerHTML = '';
+    const box = document.createElement('div');
+    box.className = 'scan-failed-box';
+    const heading = document.createElement('h3');
+    heading.textContent = 'Scan Failed';
+    const errText = document.createElement('p');
+    errText.className = 'scan-failed-message';
+    errText.textContent = app.error || 'No error detail was recorded.';
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.textContent = 'Retry Scan';
+    retryBtn.addEventListener('click', () => triggerScan(id));
+    box.append(heading, errText, retryBtn);
+    wikiView.appendChild(box);
   } else {
     wikiNav.hidden = true;
     wikiView.textContent = 'No wiki yet — run a scan.';
