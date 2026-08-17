@@ -249,6 +249,32 @@
         </div>
       </details>
 
+      <details id="mask-rules-details">
+        <summary><h3>Masking Rules</h3></summary>
+        <div class="mask-rules-manage">
+          <p class="bulk-help">Custom regex patterns for secrets the built-in checks (hardcoded keyword, AWS key, private key) don't know about — applied to raw file content alongside them on the next scan. Matches appear in Issues under "Custom Pattern: &lt;name&gt;".</p>
+          <div class="row">
+            <label>Rule Name
+              <input type="text" id="mask-rule-new-name" placeholder="e.g. Internal Token" />
+            </label>
+            <label>Severity
+              <select id="mask-rule-new-severity">
+                <option value="Critical">Critical</option>
+                <option value="High">High</option>
+                <option value="Medium" selected>Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </label>
+          </div>
+          <div class="path-input-row">
+            <input type="text" id="mask-rule-new-pattern" placeholder="e.g. itok_[A-Za-z0-9]{24}" />
+            <button type="button" id="mask-rule-add-btn">Add</button>
+          </div>
+          <p class="form-status" id="mask-rule-status"></p>
+          <table id="mask-rules-table"><tr><th>Name</th><th>Pattern</th><th>Severity</th><th></th></tr></table>
+        </div>
+      </details>
+
       <div id="wiki-nav" class="wiki-nav" hidden>
         <span>Wiki:</span>
         <div id="wiki-links"></div>

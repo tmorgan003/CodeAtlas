@@ -8,6 +8,7 @@ const dictionaryOverrides = require('../scanner/dictionaryOverrides');
 const owners = require('../store/owners');
 const envVarOverrides = require('../scanner/envVarOverrides');
 const customIgnore = require('../scanner/customIgnore');
+const customSecretRules = require('../scanner/customSecretRules');
 const graph = require('../scanner/graph');
 const { searchWiki } = require('../scanner/wikiSearch');
 const progressBus = require('../scanner/progressBus');
@@ -494,6 +495,43 @@ router.delete('/:id/ignore-patterns/:pattern', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
   res.json(customIgnore.removePattern(app.id, req.params.pattern));
+});
+
+// Feature: masking rules UI — per-app custom secret-detection regex
+// patterns, applied alongside the built-in checks on the next scan. See
+// src/scanner/customSecretRules.js and its use in issues.js's scanFile().
+router.get('/:id/mask-rules', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  res.json(customSecretRules.loadRules(app.id));
+});
+
+router.post('/:id/mask-rules', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { name, pattern, severity } = req.body || {};
+  try {
+    res.status(201).json(customSecretRules.addRule(app.id, { name, pattern, severity }));
+  } catch (err) {
+    res.status(400).json({ error: String((err && err.message) || err) });
+  }
+});
+
+router.patch('/:id/mask-rules/:ruleId', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { name, pattern, severity } = req.body || {};
+  try {
+    res.json(customSecretRules.updateRule(app.id, req.params.ruleId, { name, pattern, severity }));
+  } catch (err) {
+    res.status(400).json({ error: String((err && err.message) || err) });
+  }
+});
+
+router.delete('/:id/mask-rules/:ruleId', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  res.json(customSecretRules.removeRule(app.id, req.params.ruleId));
 });
 
 // Resolved import graph for the latest scan, for the frontend's graph view.

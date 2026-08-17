@@ -1044,6 +1044,116 @@ ignorePatternAddBtn.addEventListener('click', async () => {
 });
 ignorePatternNewInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ignorePatternAddBtn.click(); } });
 
+// ---- Masking rules (per app, custom secret-detection regex) ----
+
+const maskRulesTable = document.getElementById('mask-rules-table');
+const maskRuleNewName = document.getElementById('mask-rule-new-name');
+const maskRuleNewPattern = document.getElementById('mask-rule-new-pattern');
+const maskRuleNewSeverity = document.getElementById('mask-rule-new-severity');
+const maskRuleAddBtn = document.getElementById('mask-rule-add-btn');
+const maskRuleStatus = document.getElementById('mask-rule-status');
+const MASK_RULE_SEVERITIES = ['Critical', 'High', 'Medium', 'Low'];
+
+function renderMaskRules(appId, rules) {
+  maskRulesTable.innerHTML = '<tr><th>Name</th><th>Pattern</th><th>Severity</th><th></th></tr>';
+  for (const rule of rules) {
+    const tr = document.createElement('tr');
+
+    const nameTd = document.createElement('td');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = rule.name;
+    nameInput.addEventListener('blur', async () => {
+      if (nameInput.value.trim() === rule.name || !nameInput.value.trim()) { nameInput.value = rule.name; return; }
+      const updated = await fetch(`/api/apps/${appId}/mask-rules/${rule.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: nameInput.value.trim() }),
+      }).then((r) => r.json());
+      renderMaskRules(appId, updated);
+    });
+    nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameInput.blur(); });
+    nameTd.appendChild(nameInput);
+
+    const patternTd = document.createElement('td');
+    const patternInput = document.createElement('input');
+    patternInput.type = 'text';
+    patternInput.value = rule.pattern;
+    patternInput.addEventListener('blur', async () => {
+      if (patternInput.value.trim() === rule.pattern || !patternInput.value.trim()) { patternInput.value = rule.pattern; return; }
+      const res = await fetch(`/api/apps/${appId}/mask-rules/${rule.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pattern: patternInput.value.trim() }),
+      });
+      const body = await res.json();
+      if (!res.ok) { patternInput.value = rule.pattern; maskRuleStatus.textContent = 'Error: ' + body.error; maskRuleStatus.classList.add('error'); return; }
+      renderMaskRules(appId, body);
+    });
+    patternInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') patternInput.blur(); });
+    patternTd.appendChild(patternInput);
+
+    const severityTd = document.createElement('td');
+    const severitySelect = document.createElement('select');
+    for (const s of MASK_RULE_SEVERITIES) {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      if (s === rule.severity) opt.selected = true;
+      severitySelect.appendChild(opt);
+    }
+    severitySelect.addEventListener('change', async () => {
+      const updated = await fetch(`/api/apps/${appId}/mask-rules/${rule.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ severity: severitySelect.value }),
+      }).then((r) => r.json());
+      renderMaskRules(appId, updated);
+    });
+    severityTd.appendChild(severitySelect);
+
+    const actionTd = document.createElement('td');
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'secondary';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', async () => {
+      const updated = await fetch(`/api/apps/${appId}/mask-rules/${rule.id}`, { method: 'DELETE' }).then((r) => r.json());
+      renderMaskRules(appId, updated);
+    });
+    actionTd.appendChild(removeBtn);
+
+    tr.append(nameTd, patternTd, severityTd, actionTd);
+    maskRulesTable.appendChild(tr);
+  }
+}
+
+async function loadMaskRules(appId) {
+  const rules = await fetch(`/api/apps/${appId}/mask-rules`).then((r) => r.json());
+  renderMaskRules(appId, rules);
+}
+
+maskRuleAddBtn.addEventListener('click', async () => {
+  if (!currentDetailId) return;
+  const name = maskRuleNewName.value.trim();
+  const pattern = maskRuleNewPattern.value.trim();
+  if (!name || !pattern) return;
+  maskRuleStatus.classList.remove('success', 'error');
+  try {
+    const res = await fetch(`/api/apps/${currentDetailId}/mask-rules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, pattern, severity: maskRuleNewSeverity.value }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+    renderMaskRules(currentDetailId, body);
+    maskRuleNewName.value = '';
+    maskRuleNewPattern.value = '';
+    maskRuleStatus.textContent = `Added "${name}". Takes effect on the next scan.`;
+    maskRuleStatus.classList.add('success');
+    setTimeout(() => { maskRuleStatus.textContent = ''; maskRuleStatus.classList.remove('success'); }, 3000);
+  } catch (err) {
+    maskRuleStatus.textContent = 'Error: ' + err.message;
+    maskRuleStatus.classList.add('error');
+  }
+});
+maskRuleNewPattern.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); maskRuleAddBtn.click(); } });
+
 // ---- Detail view ----
 
 function fieldRow(label, value) {
@@ -1219,6 +1329,7 @@ async function openDetail(id) {
   });
 
   loadIgnorePatterns(id);
+  loadMaskRules(id);
 
   if (app.status === 'Done' && app.wikiLink) {
     closeScanStream();

@@ -3,6 +3,7 @@
 // generic starting points for a human reviewer.
 
 const { maskStringsAndComments, extractStrings } = require('./mask');
+const { applyCustomRules } = require('./customSecretRules');
 const { resolveRelativeImport, RESOLVE_SUFFIXES } = require('./graph');
 
 function lineOf(content, index) {
@@ -239,15 +240,22 @@ function checkKnownVulnerableDeps(rootPath, relPath, pkgJsonContent) {
   return issues;
 }
 
-function scanFile(relPath, content, ext) {
+function scanFile(relPath, content, ext, customSecretRules) {
   const secrets = scanSecrets(relPath, content);
   const alreadyFlaggedLines = new Set(secrets.filter((i) => i.category === 'Hardcoded Secret').map((i) => i.line));
+  // Feature: per-app masking rules — user-defined regex patterns applied
+  // alongside the built-in secret checks above, same raw-content approach
+  // (the value we're matching legitimately lives inside a string literal).
+  const custom = customSecretRules && customSecretRules.length
+    ? applyCustomRules(relPath, content, customSecretRules, lineOf)
+    : [];
   return [
     ...secrets,
     ...scanEntropySecrets(relPath, content, ext, alreadyFlaggedLines),
     ...scanSqlInjection(relPath, content),
     ...scanCodeExecutionRisk(relPath, content, ext),
     ...scanCodeSmell(relPath, content, ext),
+    ...custom,
   ];
 }
 

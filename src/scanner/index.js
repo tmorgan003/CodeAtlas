@@ -10,6 +10,7 @@ const { runNpmAudit } = require('./npmAudit');
 const { buildEnrichment } = require('./deepMode');
 const { CODE_EXTENSIONS, BINARY_EXTENSIONS, SKIP_FILES } = require('./ignore');
 const customIgnore = require('./customIgnore');
+const customSecretRules = require('./customSecretRules');
 const { cacheKeyFor, hashContent, loadCache, saveCache } = require('./cache');
 const history = require('./history');
 const triage = require('./triage');
@@ -81,7 +82,7 @@ function processFile(relPath, absPath, ext, ctx, cacheState) {
     fc,
     models: detectDataModels(relPath, content, ext),
     routes: detectRoutes(relPath, content, ext),
-    issues: scanFile(relPath, content, ext),
+    issues: scanFile(relPath, content, ext, ctx.customSecretRules),
     envVars: [...detectEnvVars(content)],
   };
   newCache[relPath] = { size: stat.size, mtimeMs: stat.mtimeMs, hash, result };
@@ -141,9 +142,14 @@ async function runScan(rootPath, meta, onProgress) {
   // sub-package scans, which otherwise run under their own synthetic id.
   const rootAppId = meta._rootAppId || meta.appId;
   const customPatterns = rootAppId ? customIgnore.loadPatterns(rootAppId) : [];
+  // Feature: per-app masking rules (custom secret regex patterns, edited
+  // from the UI) — same root-app-id cascade as the ignore patterns above,
+  // so they also apply inside monorepo sub-package scans.
+  const secretRules = rootAppId ? customSecretRules.loadRules(rootAppId) : [];
   const ctx = {
     allFileComponents: [], allModels: [], allRoutes: [], allIssues: [], envVars: new Set(),
     shouldIgnore: customPatterns.length ? (relPath) => customIgnore.matchesAnyPattern(relPath, customPatterns) : null,
+    customSecretRules: secretRules,
   };
 
   const cacheKey = cacheKeyFor(meta.appId, rootPath);
