@@ -37,13 +37,39 @@ function saveTriage(appId, map) {
 function setTriageState(appId, fingerprint, state, note) {
   if (!VALID_STATES.has(state)) throw new Error(`Invalid triage state: ${state}`);
   const map = loadTriage(appId);
-  if (state === 'open') {
+  const existing = map[fingerprint] || {};
+  if (state === 'open' && !existing.assignee) {
     delete map[fingerprint];
   } else {
-    map[fingerprint] = { state, note: note || '', updatedAt: new Date().toISOString() };
+    map[fingerprint] = {
+      state,
+      note: note !== undefined ? note : (existing.note || ''),
+      assignee: existing.assignee || '',
+      updatedAt: new Date().toISOString(),
+    };
   }
   saveTriage(appId, map);
-  return map[fingerprint] || { state: 'open' };
+  return map[fingerprint] || { state: 'open', note: '', assignee: '' };
+}
+
+// Feature 5: assign a person/team to a finding, independent of its triage
+// state — an "open" issue can still carry an assignee, so a bare state===
+// 'open' entry can no longer be dropped from the map purely on state.
+function setAssignee(appId, fingerprint, assignee) {
+  const map = loadTriage(appId);
+  const existing = map[fingerprint] || { state: 'open', note: '' };
+  if (!assignee && (!existing.state || existing.state === 'open')) {
+    delete map[fingerprint];
+  } else {
+    map[fingerprint] = {
+      state: existing.state || 'open',
+      note: existing.note || '',
+      assignee: assignee || '',
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  saveTriage(appId, map);
+  return map[fingerprint] || { state: 'open', note: '', assignee: '' };
 }
 
 // An issue is excluded from the "active" list/severity gating once it's
@@ -54,4 +80,4 @@ function isDismissed(triageMap, issue) {
   return !!t && (t.state === 'false_positive' || t.state === 'fixed');
 }
 
-module.exports = { fingerprintIssue, loadTriage, saveTriage, setTriageState, isDismissed, VALID_STATES };
+module.exports = { fingerprintIssue, loadTriage, saveTriage, setTriageState, setAssignee, isDismissed, VALID_STATES };

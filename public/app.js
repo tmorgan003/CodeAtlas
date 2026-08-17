@@ -681,15 +681,12 @@ async function loadIssuesInteractive(id) {
       const summarySpan = document.createElement('span');
       summarySpan.textContent = isLong ? issue.summary.slice(0, SUMMARY_TRUNCATE_AT - 1).trimEnd() + '…' : issue.summary;
       summaryTd.appendChild(summarySpan);
-      let detailsBtn = null;
-      if (isLong || issue.suggestedFix) {
-        summaryTd.appendChild(document.createTextNode(' '));
-        detailsBtn = document.createElement('button');
-        detailsBtn.type = 'button';
-        detailsBtn.className = 'link-button details-toggle';
-        detailsBtn.textContent = 'Show details';
-        summaryTd.appendChild(detailsBtn);
-      }
+      summaryTd.appendChild(document.createTextNode(' '));
+      const detailsBtn = document.createElement('button');
+      detailsBtn.type = 'button';
+      detailsBtn.className = 'link-button details-toggle';
+      detailsBtn.textContent = 'Show details';
+      summaryTd.appendChild(detailsBtn);
       tr.appendChild(summaryTd);
 
       const triageTd = document.createElement('td');
@@ -706,37 +703,59 @@ async function loadIssuesInteractive(id) {
         loadIssuesInteractive(id);
       });
       triageTd.appendChild(select);
+      if (issue.triage.assignee) {
+        const chip = document.createElement('div');
+        chip.className = 'assignee-chip';
+        chip.textContent = issue.triage.assignee;
+        chip.title = 'Assigned to ' + issue.triage.assignee;
+        triageTd.appendChild(chip);
+      }
       tr.appendChild(triageTd);
       table.appendChild(tr);
 
-      if (detailsBtn) {
-        const detailTr = document.createElement('tr');
-        detailTr.className = 'issue-detail-row';
-        detailTr.hidden = true;
-        const detailTd = document.createElement('td');
-        detailTd.colSpan = 6;
-        const dl = document.createElement('dl');
-        dl.className = 'issue-detail';
-        const addEntry = (term, value) => {
-          const dt = document.createElement('dt');
-          dt.textContent = term;
-          const dd = document.createElement('dd');
-          dd.textContent = value;
-          dl.append(dt, dd);
-        };
-        addEntry('File', issue.file);
-        addEntry('Summary', issue.summary);
-        if (issue.suggestedFix) addEntry('Suggested Fix', issue.suggestedFix);
-        if (issue.triage.note) addEntry('Triage Note', issue.triage.note);
-        detailTd.appendChild(dl);
-        detailTr.appendChild(detailTd);
-        table.appendChild(detailTr);
+      const detailTr = document.createElement('tr');
+      detailTr.className = 'issue-detail-row';
+      detailTr.hidden = true;
+      const detailTd = document.createElement('td');
+      detailTd.colSpan = 6;
+      const dl = document.createElement('dl');
+      dl.className = 'issue-detail';
+      const addEntry = (term, value) => {
+        const dt = document.createElement('dt');
+        dt.textContent = term;
+        const dd = document.createElement('dd');
+        dd.textContent = value;
+        dl.append(dt, dd);
+      };
+      addEntry('File', issue.file);
+      addEntry('Summary', issue.summary);
+      if (issue.suggestedFix) addEntry('Suggested Fix', issue.suggestedFix);
+      if (issue.triage.note) addEntry('Triage Note', issue.triage.note);
 
-        detailsBtn.addEventListener('click', () => {
-          detailTr.hidden = !detailTr.hidden;
-          detailsBtn.textContent = detailTr.hidden ? 'Show details' : 'Hide details';
-        });
-      }
+      const assigneeDt = document.createElement('dt');
+      assigneeDt.textContent = 'Assignee';
+      const assigneeDd = document.createElement('dd');
+      const assigneeInput = document.createElement('input');
+      assigneeInput.type = 'text';
+      assigneeInput.placeholder = 'Unassigned — add a person or team';
+      assigneeInput.value = issue.triage.assignee || '';
+      assigneeInput.addEventListener('blur', async () => {
+        if (assigneeInput.value === (issue.triage.assignee || '')) return;
+        await api(`/${id}/issues/assign`, { method: 'POST', body: JSON.stringify({ fingerprint: issue.fingerprint, assignee: assigneeInput.value.trim() }) });
+        loadIssuesInteractive(id);
+      });
+      assigneeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') assigneeInput.blur(); });
+      assigneeDd.appendChild(assigneeInput);
+      dl.append(assigneeDt, assigneeDd);
+
+      detailTd.appendChild(dl);
+      detailTr.appendChild(detailTd);
+      table.appendChild(detailTr);
+
+      detailsBtn.addEventListener('click', () => {
+        detailTr.hidden = !detailTr.hidden;
+        detailsBtn.textContent = detailTr.hidden ? 'Show details' : 'Hide details';
+      });
     }
     withViewTransition(() => {
       wikiView.innerHTML = '<h2>Issues</h2><p>Setting a finding to "false_positive" or "fixed" removes it from the active count and CLI severity gating on the next scan.</p>';

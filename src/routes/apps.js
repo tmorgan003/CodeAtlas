@@ -223,7 +223,7 @@ router.get('/:id/issues', (req, res) => {
   const withTriage = latest.issues.map((i) => ({
     ...i,
     fingerprint: triage.fingerprintIssue(i),
-    triage: triageMap[triage.fingerprintIssue(i)] || { state: 'open' },
+    triage: triageMap[triage.fingerprintIssue(i)] || { state: 'open', note: '', assignee: '' },
   }));
   res.json(withTriage);
 });
@@ -235,6 +235,16 @@ router.post('/:id/issues/triage', (req, res) => {
   if (!fingerprint || !state) return res.status(400).json({ error: 'fingerprint and state are required' });
   if (!triage.VALID_STATES.has(state)) return res.status(400).json({ error: `state must be one of: ${[...triage.VALID_STATES].join(', ')}` });
   const entry = triage.setTriageState(app.id, fingerprint, state, note);
+  res.json(entry);
+});
+
+// Feature 5: assign a person/team to a finding, independent of triage state.
+router.post('/:id/issues/assign', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { fingerprint, assignee } = req.body || {};
+  if (!fingerprint) return res.status(400).json({ error: 'fingerprint is required' });
+  const entry = triage.setAssignee(app.id, fingerprint, assignee || '');
   res.json(entry);
 });
 

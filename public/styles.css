@@ -309,6 +309,20 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
 .issues-table th:nth-child(6), .issues-table td:nth-child(6) { width: 18%; }
 .issue-detail { margin: 0.3rem 0; grid-template-columns: 120px 1fr; }
 .issue-detail dd { white-space: pre-wrap; }
+.issue-detail dd input { max-width: 320px; margin-top: 0; }
+.assignee-chip {
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--badge-accent-fg);
+  background: var(--badge-accent-bg);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .dashboard-stats { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
 .stat-tile { background: var(--inset); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 1rem; min-width: 100px; }
