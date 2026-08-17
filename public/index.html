@@ -331,6 +331,27 @@
         </div>
       </details>
 
+      <details id="suppression-rules-details">
+        <summary><h3>Suppression Rules</h3></summary>
+        <div class="mask-rules-manage">
+          <p class="bulk-help">Auto-suppress every current and future finding matching a category (or "any") + glob-style file pattern — e.g. category <code>Leftover Debug Logging</code>, pattern <code>test/**</code>. Unlike marking one finding false-positive/fixed in Issues, a rule keeps suppressing matches after every rescan.</p>
+          <div class="row">
+            <label>Category <span class="field-hint">(leave blank for "any")</span>
+              <input type="text" id="suppression-rule-new-category" placeholder="e.g. Leftover Debug Logging" />
+            </label>
+            <label>File Pattern
+              <input type="text" id="suppression-rule-new-pattern" placeholder="e.g. test/**" />
+            </label>
+          </div>
+          <div class="path-input-row">
+            <input type="text" id="suppression-rule-new-note" placeholder="Optional note (why this is suppressed)" />
+            <button type="button" id="suppression-rule-add-btn">Add</button>
+          </div>
+          <p class="form-status" id="suppression-rule-status"></p>
+          <table id="suppression-rules-table"><tr><th>Category</th><th>File Pattern</th><th>Note</th><th></th></tr></table>
+        </div>
+      </details>
+
       <div id="wiki-nav" class="wiki-nav" hidden>
         <span>Wiki:</span>
         <div id="wiki-links"></div>

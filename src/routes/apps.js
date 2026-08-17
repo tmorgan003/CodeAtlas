@@ -10,6 +10,7 @@ const envVarOverrides = require('../scanner/envVarOverrides');
 const customIgnore = require('../scanner/customIgnore');
 const customSecretRules = require('../scanner/customSecretRules');
 const customWikiSections = require('../scanner/customWikiSections');
+const suppressionRules = require('../scanner/suppressionRules');
 const graph = require('../scanner/graph');
 const { searchWiki } = require('../scanner/wikiSearch');
 const progressBus = require('../scanner/progressBus');
@@ -64,8 +65,9 @@ router.get('/dashboard', (req, res) => {
     const latest = history.getLatestSnapshot(app.id);
     if (!latest) continue;
     const triageMap = triage.loadTriage(app.id);
+    const appRules = suppressionRules.loadRules(app.id);
     for (const issue of latest.issues) {
-      if (triage.isDismissed(triageMap, issue)) continue;
+      if (triage.isDismissed(triageMap, issue, appRules)) continue;
       bySeverity[issue.severity] = (bySeverity[issue.severity] || 0) + 1;
       totalActiveIssues += 1;
     }
@@ -164,6 +166,7 @@ router.get('/issues', (req, res) => {
     const latest = history.getLatestSnapshot(app.id);
     if (!latest) continue;
     const triageMap = triage.loadTriage(app.id);
+    const appRules = suppressionRules.loadRules(app.id);
     for (const issue of latest.issues) {
       const fingerprint = triage.fingerprintIssue(issue);
       all.push({
@@ -172,6 +175,7 @@ router.get('/issues', (req, res) => {
         appName: app.name,
         fingerprint,
         triage: triageMap[fingerprint] || { state: 'open', note: '', assignee: '' },
+        suppressedByRule: suppressionRules.matchesAnyRule(issue, appRules),
       });
     }
   }
@@ -450,12 +454,41 @@ router.get('/:id/issues', (req, res) => {
   const latest = history.getLatestSnapshot(app.id);
   if (!latest) return res.json([]);
   const triageMap = triage.loadTriage(app.id);
+  const appRules = suppressionRules.loadRules(app.id);
   const withTriage = latest.issues.map((i) => ({
     ...i,
     fingerprint: triage.fingerprintIssue(i),
     triage: triageMap[triage.fingerprintIssue(i)] || { state: 'open', note: '', assignee: '' },
+    suppressedByRule: suppressionRules.matchesAnyRule(i, appRules),
   }));
   res.json(withTriage);
+});
+
+// Feature 12: pattern-based issue suppression rules (see suppressionRules.js
+// for how they're applied) — auto-suppresses every current and future
+// finding matching a category + file-glob pattern, distinct from
+// triage.js's per-finding false-positive marking above.
+router.get('/:id/suppression-rules', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  res.json(suppressionRules.loadRules(app.id));
+});
+
+router.post('/:id/suppression-rules', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { category, filePattern, note } = req.body || {};
+  try {
+    res.status(201).json(suppressionRules.addRule(app.id, { category, filePattern, note }));
+  } catch (err) {
+    res.status(400).json({ error: String((err && err.message) || err) });
+  }
+});
+
+router.delete('/:id/suppression-rules/:ruleId', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  res.json(suppressionRules.removeRule(app.id, req.params.ruleId));
 });
 
 // Feature 15: push a single issue to the app's configured external tracker

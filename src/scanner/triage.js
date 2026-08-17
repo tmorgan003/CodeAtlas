@@ -7,6 +7,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { matchesAnyRule } = require('./suppressionRules');
 
 const TRIAGE_DIR = path.join(__dirname, '..', '..', 'data', 'triage');
 const VALID_STATES = new Set(['open', 'acknowledged', 'false_positive', 'fixed']);
@@ -74,10 +75,13 @@ function setAssignee(appId, fingerprint, assignee) {
 
 // An issue is excluded from the "active" list/severity gating once it's
 // been marked false_positive or fixed; "acknowledged" stays active but
-// carries a visible note that it's been reviewed.
-function isDismissed(triageMap, issue) {
+// carries a visible note that it's been reviewed. A matching pattern-based
+// suppression rule (see suppressionRules.js) dismisses it the same way,
+// independent of whether it also has a per-finding triage record.
+function isDismissed(triageMap, issue, suppressionRules) {
   const t = triageMap[fingerprintIssue(issue)];
-  return !!t && (t.state === 'false_positive' || t.state === 'fixed');
+  if (t && (t.state === 'false_positive' || t.state === 'fixed')) return true;
+  return !!(suppressionRules && suppressionRules.length && matchesAnyRule(issue, suppressionRules));
 }
 
 // Feature 15: records where an issue was pushed to (GitHub Issues / Jira),

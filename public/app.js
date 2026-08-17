@@ -1076,6 +1076,7 @@ function applyCrossIssuesFilters() {
   const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
   const filtered = allCrossIssues
     .filter((i) => i.triage.state === 'open' || i.triage.state === 'acknowledged')
+    .filter((i) => !i.suppressedByRule)
     .filter((i) => !severity || i.severity === severity)
     .filter((i) => !appId || i.appId === appId)
     .filter((i) => !source || (i.source || 'static') === source)
@@ -1470,6 +1471,78 @@ maskRuleAddBtn.addEventListener('click', async () => {
 });
 maskRuleNewPattern.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); maskRuleAddBtn.click(); } });
 
+// ---- Suppression rules (Feature 12: pattern-based auto-suppression, vs.
+// triage's per-finding false-positive marking) ----
+
+const suppressionRulesTable = document.getElementById('suppression-rules-table');
+const suppressionRuleNewCategory = document.getElementById('suppression-rule-new-category');
+const suppressionRuleNewPattern = document.getElementById('suppression-rule-new-pattern');
+const suppressionRuleNewNote = document.getElementById('suppression-rule-new-note');
+const suppressionRuleAddBtn = document.getElementById('suppression-rule-add-btn');
+const suppressionRuleStatus = document.getElementById('suppression-rule-status');
+
+function renderSuppressionRules(appId, rules) {
+  suppressionRulesTable.innerHTML = '<tr><th>Category</th><th>File Pattern</th><th>Note</th><th></th></tr>';
+  for (const rule of rules) {
+    const tr = document.createElement('tr');
+    const catTd = document.createElement('td');
+    catTd.textContent = rule.category === 'any' ? 'Any' : rule.category;
+    const patternTd = document.createElement('td');
+    const code = document.createElement('code');
+    code.textContent = rule.filePattern;
+    patternTd.appendChild(code);
+    const noteTd = document.createElement('td');
+    noteTd.textContent = rule.note || '—';
+    noteTd.style.color = 'var(--muted)';
+    const actionTd = document.createElement('td');
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'secondary';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', async () => {
+      const updated = await fetch(`/api/apps/${appId}/suppression-rules/${rule.id}`, { method: 'DELETE' }).then((r) => r.json());
+      renderSuppressionRules(appId, updated);
+    });
+    actionTd.appendChild(removeBtn);
+    tr.append(catTd, patternTd, noteTd, actionTd);
+    suppressionRulesTable.appendChild(tr);
+  }
+}
+
+async function loadSuppressionRules(appId) {
+  const rules = await fetch(`/api/apps/${appId}/suppression-rules`).then((r) => r.json());
+  renderSuppressionRules(appId, rules);
+}
+
+suppressionRuleAddBtn.addEventListener('click', async () => {
+  if (!currentDetailId) return;
+  const category = suppressionRuleNewCategory.value.trim();
+  const filePattern = suppressionRuleNewPattern.value.trim();
+  const note = suppressionRuleNewNote.value.trim();
+  if (!filePattern) return;
+  suppressionRuleStatus.classList.remove('success', 'error');
+  try {
+    const res = await fetch(`/api/apps/${currentDetailId}/suppression-rules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, filePattern, note }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+    await loadSuppressionRules(currentDetailId);
+    suppressionRuleNewCategory.value = '';
+    suppressionRuleNewPattern.value = '';
+    suppressionRuleNewNote.value = '';
+    suppressionRuleStatus.textContent = 'Added — matches hide immediately in Issues below; overall counts update on the next scan.';
+    suppressionRuleStatus.classList.add('success');
+    setTimeout(() => { suppressionRuleStatus.textContent = ''; suppressionRuleStatus.classList.remove('success'); }, 4000);
+  } catch (err) {
+    suppressionRuleStatus.textContent = 'Error: ' + err.message;
+    suppressionRuleStatus.classList.add('error');
+  }
+});
+suppressionRuleNewPattern.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); suppressionRuleAddBtn.click(); } });
+
 // ---- Detail view ----
 
 function fieldRow(label, value) {
@@ -1581,7 +1654,7 @@ async function openDetail(id) {
       const issues = await api(`/${id}/issues`);
       const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
       const threshold = order[gateSelect.value];
-      const active = issues.filter((i) => i.triage.state !== 'false_positive' && i.triage.state !== 'fixed');
+      const active = issues.filter((i) => i.triage.state !== 'false_positive' && i.triage.state !== 'fixed' && !i.suppressedByRule);
       const failing = active.some((i) => order[i.severity] <= threshold);
       gateStatus.textContent = failing ? 'Would FAIL CI' : 'Would PASS CI';
       gateStatus.className = 'gate-status ' + (failing ? 'gate-fail' : 'gate-pass');
@@ -1699,6 +1772,7 @@ async function openDetail(id) {
 
   loadIgnorePatterns(id);
   loadMaskRules(id);
+  loadSuppressionRules(id);
 
   if (app.status === 'Done' && app.wikiLink) {
     closeScanStream();
@@ -1934,7 +2008,7 @@ async function loadIssuesInteractive(id) {
     for (const issue of issues) {
       const tr = document.createElement('tr');
       tr.dataset.source = issue.source || 'static';
-      if (issue.triage.state === 'false_positive' || issue.triage.state === 'fixed') tr.style.opacity = '0.5';
+      if (issue.triage.state === 'false_positive' || issue.triage.state === 'fixed' || issue.suppressedByRule) tr.style.opacity = '0.5';
 
       const severityTd = document.createElement('td');
       const severityBadge = document.createElement('span');
@@ -1987,6 +2061,13 @@ async function loadIssuesInteractive(id) {
         loadIssuesInteractive(id);
       });
       triageTd.appendChild(select);
+      if (issue.suppressedByRule) {
+        const badge = document.createElement('div');
+        badge.className = 'override-badge';
+        badge.textContent = 'Auto-suppressed';
+        badge.title = 'Matches a Suppression Rule above — excluded from active counts and CI gating regardless of this triage state.';
+        triageTd.appendChild(badge);
+      }
       if (issue.triage.assignee) {
         const chip = document.createElement('div');
         chip.className = 'assignee-chip';

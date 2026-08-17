@@ -91,4 +91,4 @@ function matchesAnyPattern(relPath, patterns) {
   });
 }
 
-module.exports = { loadPatterns, savePatterns, addPattern, renamePattern, removePattern, matchesAnyPattern };
+module.exports = { loadPatterns, savePatterns, addPattern, renamePattern, removePattern, matchesAnyPattern, globToRegExp };

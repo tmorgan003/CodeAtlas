@@ -11,6 +11,7 @@ const { buildEnrichment } = require('./deepMode');
 const { CODE_EXTENSIONS, BINARY_EXTENSIONS, SKIP_FILES } = require('./ignore');
 const customIgnore = require('./customIgnore');
 const customSecretRules = require('./customSecretRules');
+const suppressionRules = require('./suppressionRules');
 const { cacheKeyFor, hashContent, loadCache, saveCache } = require('./cache');
 const history = require('./history');
 const triage = require('./triage');
@@ -253,7 +254,8 @@ async function runScan(rootPath, meta, onProgress) {
   // findings drop out of the active count and CLI severity gating, while the
   // full (untouched) issue list still feeds history diffing below.
   const triageMap = meta.appId ? triage.loadTriage(meta.appId) : {};
-  const activeIssues = ctx.allIssues.filter((i) => !triage.isDismissed(triageMap, i));
+  const appSuppressionRules = meta.appId ? suppressionRules.loadRules(meta.appId) : [];
+  const activeIssues = ctx.allIssues.filter((i) => !triage.isDismissed(triageMap, i, appSuppressionRules));
 
   let enrichment = null;
   if (meta.scanMode === 'deep') {
