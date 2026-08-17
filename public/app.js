@@ -1394,6 +1394,7 @@ function renderWikiNav(id, app) {
     ['Issues', () => loadIssuesInteractive(id)],
     ['Data Dictionary', () => loadDictionaryInteractive(id)],
     ['Env Vars', () => loadEnvVarsInteractive(id)],
+    ['Process Flows', () => loadProcessFlowsView(id)],
     ['Dependency Graph', () => loadGraphView(id)],
     ['History', () => loadHistory(id)],
   ];
@@ -1817,6 +1818,127 @@ function downloadGraphPng(svgEl, filenameBase, sizePx) {
     }, 'image/png');
   };
   img.src = svgUrl;
+}
+
+// Feature: real process-flow diagrams. Architecture.md/Process-Flows/*.md
+// only ever rendered each route's step trace as a numbered markdown list —
+// this turns that same step data into an actual flow diagram, hand-rolled
+// SVG (same no-charting-library approach as the dependency graph below):
+// one horizontal lane per route, one box per step, connected by arrows.
+function truncateLabel(text, max) {
+  return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
+}
+
+function classifyStepBox(step, isFirst, isLast) {
+  if (isFirst) return { fill: 'var(--accent-surface)', stroke: 'var(--accent-surface)', text: '#fff' };
+  if (/side effect/i.test(step)) return { fill: 'var(--badge-info-bg)', stroke: 'var(--info)', text: 'var(--text)' };
+  if (/unhandled failure/i.test(step)) return { fill: 'var(--badge-err-bg)', stroke: 'var(--err)', text: 'var(--text)' };
+  if (isLast) {
+    return /no explicit response/i.test(step)
+      ? { fill: 'var(--badge-warn-bg)', stroke: 'var(--warn)', text: 'var(--text)' }
+      : { fill: 'var(--badge-ok-bg)', stroke: 'var(--ok)', text: 'var(--text)' };
+  }
+  return { fill: 'var(--inset)', stroke: 'var(--border)', text: 'var(--text)' };
+}
+
+function renderProcessFlowDiagram(entryPoints, group) {
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const BOX_W = 200, BOX_H = 56, GAP_X = 44, GAP_Y = 22, PAD = 16;
+  const entryLabel = 'Entry: ' + (entryPoints.length ? truncateLabel(entryPoints.join(', '), 30) : 'entry point');
+
+  const rows = group.routes.map((r) => [entryLabel, `${r.method} ${r.path}`, ...r.steps.slice(1)]);
+  const maxBoxes = Math.max(1, ...rows.map((r) => r.length));
+  const width = PAD * 2 + maxBoxes * BOX_W + (maxBoxes - 1) * GAP_X;
+  const height = PAD * 2 + rows.length * BOX_H + (rows.length - 1) * GAP_Y;
+
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('width', String(width));
+  svg.style.display = 'block';
+
+  rows.forEach((boxes, ri) => {
+    const y = PAD + ri * (BOX_H + GAP_Y);
+    boxes.forEach((stepText, bi) => {
+      const x = PAD + bi * (BOX_W + GAP_X);
+      if (bi > 0) {
+        const line = document.createElementNS(svgNS, 'line');
+        line.setAttribute('x1', x - GAP_X);
+        line.setAttribute('y1', y + BOX_H / 2);
+        line.setAttribute('x2', x - 6);
+        line.setAttribute('y2', y + BOX_H / 2);
+        line.setAttribute('stroke', 'var(--border)');
+        line.setAttribute('stroke-width', '2');
+        svg.appendChild(line);
+        const arrow = document.createElementNS(svgNS, 'polygon');
+        arrow.setAttribute('points', `${x - 6},${y + BOX_H / 2 - 5} ${x},${y + BOX_H / 2} ${x - 6},${y + BOX_H / 2 + 5}`);
+        arrow.setAttribute('fill', 'var(--border)');
+        svg.appendChild(arrow);
+      }
+      const style = classifyStepBox(stepText, bi === 0, bi === boxes.length - 1);
+      const rect = document.createElementNS(svgNS, 'rect');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', BOX_W);
+      rect.setAttribute('height', BOX_H);
+      rect.setAttribute('rx', 6);
+      rect.setAttribute('fill', style.fill);
+      rect.setAttribute('stroke', style.stroke);
+      rect.setAttribute('stroke-width', '1.5');
+      const title = document.createElementNS(svgNS, 'title');
+      title.textContent = stepText;
+      rect.appendChild(title);
+      svg.appendChild(rect);
+
+      const words = truncateLabel(stepText, 46).split(' ');
+      const lineHeight = 13;
+      const linesOfText = [];
+      let current = '';
+      for (const w of words) {
+        if ((current + ' ' + w).trim().length > 24) { linesOfText.push(current.trim()); current = w; }
+        else current = (current + ' ' + w).trim();
+      }
+      if (current) linesOfText.push(current);
+      const startY = y + BOX_H / 2 - ((linesOfText.length - 1) * lineHeight) / 2 + 4;
+      linesOfText.slice(0, 3).forEach((lineText, li) => {
+        const text = document.createElementNS(svgNS, 'text');
+        text.setAttribute('x', x + BOX_W / 2);
+        text.setAttribute('y', startY + li * lineHeight);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('font-size', '10.5');
+        text.setAttribute('fill', style.text);
+        text.textContent = lineText;
+        svg.appendChild(text);
+      });
+    });
+  });
+
+  return svg;
+}
+
+async function loadProcessFlowsView(id) {
+  try {
+    const data = await api(`/${id}/process-flows`);
+    if (!data.groups.length) {
+      withViewTransition(() => {
+        wikiView.innerHTML = '<h2>Process Flows</h2><p>No routes/endpoints were detected by pattern matching — run a scan first, or this app may not expose HTTP routes.</p>';
+      });
+      return;
+    }
+    withViewTransition(() => {
+      wikiView.innerHTML = '<h2>Process Flows</h2><p style="color:var(--muted);font-size:0.85rem">Each lane traces one route from the app\'s entry point through its handler to a response — hover a box for the full step text. Blue-bordered boxes are detected data/network side effects; green/amber-bordered boxes show whether the handler actually sent a response.</p>';
+      for (const group of data.groups) {
+        const section = document.createElement('div');
+        section.innerHTML = `<h3>${group.name} (${group.routes.length} route${group.routes.length === 1 ? '' : 's'})</h3>`;
+        const scroll = document.createElement('div');
+        scroll.className = 'table-scroll';
+        scroll.appendChild(renderProcessFlowDiagram(data.entryPoints, group));
+        section.appendChild(scroll);
+        wikiView.appendChild(section);
+      }
+    });
+  } catch (err) {
+    wikiView.textContent = 'Could not load process flows: ' + err.message;
+  }
 }
 
 async function loadGraphView(id) {

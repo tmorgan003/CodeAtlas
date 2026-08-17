@@ -279,6 +279,22 @@ async function runScan(rootPath, meta, onProgress) {
       stats: { units: unitNames.length, models: models.length, routes: ctx.allRoutes.length, issues: activeIssues.length },
       issues: ctx.allIssues,
       routes: ctx.allRoutes.map((r) => ({ method: r.method, path: r.path, file: r.file })),
+      // Feature: real process-flow diagrams. The richer per-route detail
+      // (handler, step trace, which Process-Flow group it belongs to) only
+      // ever existed transiently during the scan and got flattened straight
+      // into Process-Flows/*.md — nothing structured to build a diagram
+      // from. Persisted separately (not merged into `routes` above) so
+      // existing consumers of the plain {method,path,file} shape are
+      // unaffected.
+      processFlowGroups: routeGroups.groups.map((g) => ({
+        name: g.name,
+        slug: g.slug,
+        routes: g.routes.map((r) => ({
+          method: r.method, path: r.path, file: r.file, line: r.line,
+          handlerName: r.handlerName, traced: r.traced, steps: r.steps,
+        })),
+      })),
+      entryPoints: structureInfo.entryPoints,
       models: models.map((m) => ({ name: m.name, source: m.source, file: m.file, fields: m.fields, relationships: m.relationships })),
       // Feature 8: auto-detected frameworks/ecosystems, so a portfolio-wide
       // tech stack view can group apps by what they actually use instead of

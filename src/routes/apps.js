@@ -542,6 +542,17 @@ router.get('/:id/graph', (req, res) => {
   res.json(g || { nodes: [], edges: [] });
 });
 
+// Feature: real process-flow diagrams — structured entry-point/route/handler
+// detail for the frontend to render as an actual diagram, instead of the
+// plain-text "N route(s)" list Architecture.md shows.
+router.get('/:id/process-flows', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const latest = history.getLatestSnapshot(app.id);
+  if (!latest) return res.json({ entryPoints: [], groups: [] });
+  res.json({ entryPoints: latest.entryPoints || [], groups: latest.processFlowGroups || [] });
+});
+
 // Live full-text search across the latest scan's generated wiki .md files.
 router.get('/:id/wiki-search', (req, res) => {
   const app = db.getById(req.params.id);
