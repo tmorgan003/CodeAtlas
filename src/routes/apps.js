@@ -390,11 +390,28 @@ router.get('/:id/wiki-file', (req, res) => {
 
   const wikiDir = path.join(app.localPath, 'wiki');
   const requested = req.query.path || 'Home.md';
-  const resolved = path.resolve(wikiDir, requested);
-  if (!resolved.startsWith(path.resolve(wikiDir))) {
-    return res.status(400).json({ error: 'Invalid path' });
+
+  // Feature 9: monorepo sub-package links in Home.md's "Packages" section
+  // (see wikiWriter.js) point outside this app's own wiki/ dir — each
+  // sub-package is scanned independently with its own wiki/ under the
+  // shared scan root, e.g. "<scanRoot>/billing-service/wiki/Home.md". The
+  // frontend's relative-link resolution collapses "../billing-service/..."
+  // down to "billing-service/wiki/Home.md" (see resolveRelative in app.js),
+  // which doesn't exist under wikiDir — so try wikiDir first (the common
+  // case, unchanged) and fall back to resolving against the scan root,
+  // still confined to some "wiki" subdirectory so this can't be used to
+  // read arbitrary source files.
+  const wikiRoot = path.resolve(wikiDir);
+  const appRoot = path.resolve(app.localPath);
+  const inWiki = path.resolve(wikiDir, requested);
+  const inAppRoot = path.resolve(appRoot, requested);
+  const candidates = [];
+  if (inWiki === wikiRoot || inWiki.startsWith(wikiRoot + path.sep)) candidates.push(inWiki);
+  if ((inAppRoot === appRoot || inAppRoot.startsWith(appRoot + path.sep)) && inAppRoot.split(path.sep).includes('wiki')) {
+    candidates.push(inAppRoot);
   }
-  if (!fs.existsSync(resolved)) return res.status(404).json({ error: 'File not found' });
+  const resolved = candidates.find((p) => fs.existsSync(p));
+  if (!resolved) return res.status(404).json({ error: 'File not found' });
   const content = fs.readFileSync(resolved, 'utf8');
   res.json({ path: requested, content });
 });
