@@ -10,7 +10,7 @@ const envVarOverrides = require('../scanner/envVarOverrides');
 const graph = require('../scanner/graph');
 const { searchWiki } = require('../scanner/wikiSearch');
 const progressBus = require('../scanner/progressBus');
-const { triggerAppScan } = require('../scanRunner');
+const scanQueue = require('../scanner/scanQueue');
 const { buildStaticSite } = require('../scanner/exportSite');
 const { buildPortfolioStaticSite } = require('../scanner/exportPortfolio');
 const { pushToGithubWiki } = require('../scanner/exportGithubWiki');
@@ -205,6 +205,13 @@ router.get('/compare', (req, res) => {
   res.json({ a: summarize(appA), b: summarize(appB) });
 });
 
+// Feature 20: portfolio-wide scan queue visibility — how many scans are
+// actively running vs waiting for a slot, and each queued app's position.
+// Registered before /:id for the same reason as the other list-level routes.
+router.get('/scan-queue', (req, res) => {
+  res.json(scanQueue.queueStats());
+});
+
 router.get('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
@@ -274,10 +281,8 @@ router.post('/:id/scan', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
 
-  const updated = db.update(app.id, { status: 'Scanning', error: null });
-  res.json(updated);
-
-  triggerAppScan(app).catch(() => { /* already recorded on the app entry + progress bus */ });
+  scanQueue.enqueueScan(app);
+  res.json(db.getById(app.id)); // reflects whatever enqueueScan just set (Queued) or left as-is (about to run)
 });
 
 // Feature 16: live scan progress via Server-Sent Events. If the app isn't

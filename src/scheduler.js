@@ -6,7 +6,7 @@
 // explicitly opt in via the "Auto-rescan" field.
 
 const db = require('./store/db');
-const { triggerAppScan } = require('./scanRunner');
+const scanQueue = require('./scanner/scanQueue');
 const { sendDigestIfDue } = require('./scanner/digest');
 
 const CHECK_INTERVAL_MS = 60 * 1000;
@@ -14,7 +14,7 @@ const INITIAL_DELAY_MS = 5000;
 
 function isDue(app, now) {
   if (!app.scheduleMinutes || app.scheduleMinutes <= 0) return false;
-  if (app.status === 'Scanning') return false;
+  if (app.status === 'Scanning' || app.status === 'Queued') return false;
   if (!app.scannedAt) return true;
   const last = new Date(app.scannedAt).getTime();
   return now - last >= app.scheduleMinutes * 60 * 1000;
@@ -24,7 +24,7 @@ function tick() {
   const now = Date.now();
   for (const app of db.loadAll()) {
     if (isDue(app, now)) {
-      triggerAppScan(app).catch(() => { /* recorded on the app entry + progress bus */ });
+      scanQueue.enqueueScan(app);
     }
     sendDigestIfDue(app, now).catch(() => { /* best-effort; next tick retries */ });
   }

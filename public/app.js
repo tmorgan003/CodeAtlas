@@ -242,7 +242,7 @@ function updateRow(refs, app) {
   refs.lastStatus = app.status;
 
   refs.scanBtn.textContent = app.status === 'Not Started' ? 'Scan' : 'Rescan';
-  refs.scanBtn.disabled = app.status === 'Scanning';
+  refs.scanBtn.disabled = app.status === 'Scanning' || app.status === 'Queued';
 
   // Feature 17: archived apps stay in the list (when "Show archived" is
   // on) but read as retired, not active — dimmed row, no flashing badge.
@@ -387,6 +387,18 @@ async function loadDashboard() {
     return;
   }
   dashboardContent.innerHTML = '';
+
+  // Feature 20: scan queue visibility — only shown while something's
+  // actually running/waiting, so it doesn't clutter the dashboard at rest.
+  const q = await fetch('/api/apps/scan-queue').then((r) => r.json()).catch(() => null);
+  if (q && (q.active > 0 || q.queued.length > 0)) {
+    const queueNote = document.createElement('p');
+    queueNote.className = 'scan-queue-note';
+    const parts = [`${q.active}/${q.maxConcurrent} scan slot(s) active`];
+    if (q.queued.length) parts.push(`${q.queued.length} queued: ${q.queued.map((a) => `${a.name} (#${a.position})`).join(', ')}`);
+    queueNote.textContent = parts.join(' — ');
+    dashboardContent.appendChild(queueNote);
+  }
 
   const stats = document.createElement('div');
   stats.className = 'dashboard-stats';

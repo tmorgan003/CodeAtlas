@@ -341,6 +341,7 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
   white-space: nowrap;
 }
 
+.scan-queue-note { background: var(--badge-info-bg); color: var(--info); border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.82rem; margin-bottom: 0.75rem; }
 .dashboard-stats { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
 .stat-tile { background: var(--inset); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 1rem; min-width: 100px; }
 .stat-tile .stat-value { font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
@@ -395,6 +396,7 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
 }
 .status-not-started { background: var(--badge-neutral-bg); color: var(--muted); }
 .status-scanning { background: var(--badge-warn-bg); color: var(--warn); animation: scanPulse 1.6s var(--ease-out) infinite; }
+.status-queued { background: var(--badge-info-bg); color: var(--info); }
 .status-done { background: var(--badge-ok-bg); color: var(--ok); }
 .status-failed { background: var(--badge-err-bg); color: var(--err); }
 
