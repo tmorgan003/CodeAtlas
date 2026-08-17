@@ -276,6 +276,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
 th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
+#app-table th.sortable { cursor: pointer; user-select: none; }
+#app-table th.sortable:hover { color: var(--text); }
+.sort-indicator { color: var(--accent-text); font-size: 0.7rem; }
 
 /* Prevents a wide table (many tags, an unbounded column) from forcing the
    whole page to scroll horizontally on a narrow viewport — the table

@@ -270,6 +270,38 @@ function populateFilterOptions(apps) {
   updateEnvironmentSuggestions(apps);
 }
 
+// ---- Applications table sorting ----
+// Click a sortable header to sort by it; click again to reverse. State is
+// re-applied after every filter change so sort order survives filtering.
+let sortState = { key: null, dir: 1 };
+const sortableHeaders = document.querySelectorAll('#app-table th.sortable');
+
+function updateSortIndicators() {
+  for (const th of sortableHeaders) {
+    const indicator = th.querySelector('.sort-indicator');
+    indicator.textContent = th.dataset.sortKey === sortState.key ? (sortState.dir === 1 ? ' ▲' : ' ▼') : '';
+  }
+}
+
+sortableHeaders.forEach((th) => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sortKey;
+    sortState = sortState.key === key ? { key, dir: -sortState.dir } : { key, dir: 1 };
+    updateSortIndicators();
+    applyFilters();
+  });
+});
+
+function applySort(apps) {
+  if (!sortState.key) return apps;
+  const key = sortState.key;
+  return [...apps].sort((a, b) => {
+    const av = (a[key] || '').toLowerCase();
+    const bv = (b[key] || '').toLowerCase();
+    return av < bv ? -sortState.dir : av > bv ? sortState.dir : 0;
+  });
+}
+
 function applyFilters() {
   const search = filterSearch.value.trim().toLowerCase();
   const env = filterEnvironment.value;
@@ -280,7 +312,7 @@ function applyFilters() {
     if (search && !`${a.name} ${(a.tags || []).join(' ')}`.toLowerCase().includes(search)) return false;
     return true;
   });
-  renderList(filtered);
+  renderList(applySort(filtered));
 }
 
 [filterSearch, filterEnvironment, filterOwner].forEach((el) => el.addEventListener('input', applyFilters));

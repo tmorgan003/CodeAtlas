@@ -145,7 +145,13 @@
       <div class="table-scroll">
         <table id="app-table">
           <thead>
-            <tr><th>Name</th><th>Environment</th><th>Tags</th><th>Status</th><th>Actions</th></tr>
+            <tr>
+              <th class="sortable" data-sort-key="name">Name<span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort-key="environment">Environment<span class="sort-indicator"></span></th>
+              <th>Tags</th>
+              <th class="sortable" data-sort-key="status">Status<span class="sort-indicator"></span></th>
+              <th>Actions</th>
+            </tr>
           </thead>
           <tbody id="app-table-body"></tbody>
         </table>
