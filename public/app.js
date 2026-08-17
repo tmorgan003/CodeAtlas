@@ -244,7 +244,11 @@ function updateRow(refs, app) {
   refs.scanBtn.textContent = app.status === 'Not Started' ? 'Scan' : 'Rescan';
   refs.scanBtn.disabled = app.status === 'Scanning';
 
-  if (statusChanged) {
+  // Feature 17: archived apps stay in the list (when "Show archived" is
+  // on) but read as retired, not active — dimmed row, no flashing badge.
+  refs.tr.classList.toggle('row-archived', !!app.archived);
+
+  if (statusChanged && !app.archived) {
     refs.badge.classList.remove('badge-flash');
     void refs.badge.offsetWidth; // restart the animation on repeated changes
     refs.badge.classList.add('badge-flash');
@@ -287,6 +291,7 @@ let allApps = [];
 const filterSearch = document.getElementById('filter-search');
 const filterEnvironment = document.getElementById('filter-environment');
 const filterOwner = document.getElementById('filter-owner');
+const filterShowArchived = document.getElementById('filter-show-archived');
 
 function populateFilterOptions(apps) {
   const rebuild = (select, values, allLabel) => {
@@ -345,9 +350,10 @@ function applyFilters() {
 }
 
 [filterSearch, filterEnvironment, filterOwner].forEach((el) => el.addEventListener('input', applyFilters));
+filterShowArchived.addEventListener('change', refreshList);
 
 async function refreshList() {
-  const apps = await api('');
+  const apps = await api(filterShowArchived.checked ? '?includeArchived=true' : '');
   allApps = apps;
   populateFilterOptions(apps);
   applyFilters();
@@ -912,6 +918,33 @@ async function openDetail(id) {
     digestDd.appendChild(digestLabel);
     detailMeta.append(digestDt, digestDd);
     detailMeta.append(...badgeFieldRow('Status', app.status, statusClass(app.status), 'status-badge'));
+
+    // Feature 17: archiving retires an app from the default list/portfolio
+    // rollups without touching its stored scan history — reversible from
+    // here at any time.
+    const archiveDt = document.createElement('dt');
+    archiveDt.textContent = 'Archived';
+    const archiveDd = document.createElement('dd');
+    const archiveBtn = document.createElement('button');
+    archiveBtn.type = 'button';
+    archiveBtn.className = 'secondary';
+    archiveBtn.textContent = app.archived ? 'Unarchive' : 'Archive';
+    archiveBtn.addEventListener('click', async () => {
+      await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ archived: !app.archived }) });
+      await refreshList();
+      openDetail(id);
+    });
+    archiveDd.appendChild(archiveBtn);
+    if (app.archived) {
+      const note = document.createElement('span');
+      note.style.marginLeft = '0.6rem';
+      note.style.color = 'var(--muted)';
+      note.style.fontSize = '0.82rem';
+      note.textContent = 'Hidden from the default list and portfolio rollups. Scan history is kept.';
+      archiveDd.appendChild(note);
+    }
+    detailMeta.append(archiveDt, archiveDd);
+
     detailMeta.append(...fieldRow('Wiki Location', app.wikiLink));
     detailMeta.append(...fieldRow('Last Scanned', app.scannedAt ? new Date(app.scannedAt).toLocaleString() : ''));
     if (app.error) detailMeta.append(...fieldRow('Error', app.error));

@@ -18,8 +18,12 @@ const { pushIssueToTracker } = require('../scanner/trackerLink');
 
 const router = express.Router();
 
+// Feature 17: archived apps are hidden from the default list (and from the
+// portfolio-wide rollups below) but keep their full scan history — nothing
+// is deleted, ?includeArchived=true just opts back into seeing them.
 router.get('/', (req, res) => {
-  res.json(db.loadAll());
+  const apps = db.loadAll();
+  res.json(req.query.includeArchived === 'true' ? apps : apps.filter((a) => !a.archived));
 });
 
 // Portfolio-wide rollup for the dashboard landing view: issue counts by
@@ -29,7 +33,7 @@ router.get('/', (req, res) => {
 const STALE_DAYS = 14;
 
 router.get('/dashboard', (req, res) => {
-  const apps = db.loadAll();
+  const apps = db.loadAll().filter((a) => !a.archived);
   const now = Date.now();
   const byStatus = {};
   const byEnvironment = {};
@@ -115,7 +119,7 @@ router.post('/bulk', (req, res) => {
 // have to drill into each app individually to see what's open portfolio-wide.
 // Registered before /:id for the same reason as /dashboard and /bulk above.
 router.get('/issues', (req, res) => {
-  const apps = db.loadAll();
+  const apps = db.loadAll().filter((a) => !a.archived);
   const all = [];
   for (const app of apps) {
     const latest = history.getLatestSnapshot(app.id);
@@ -140,7 +144,7 @@ router.get('/issues', (req, res) => {
 // scanner auto-detected (frameworks/ecosystems) on each app's latest scan.
 // Registered before /:id for the same reason as the other list-level routes.
 router.get('/tech-stack', (req, res) => {
-  const apps = db.loadAll();
+  const apps = db.loadAll().filter((a) => !a.archived);
   const perApp = [];
   const techMap = new Map();
   for (const app of apps) {
@@ -181,6 +185,7 @@ router.patch('/:id', (req, res) => {
   const {
     purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl,
     failOnSeverity, digestEnabled, trackerType, trackerBaseUrl, trackerProjectOrRepo, trackerEmail, trackerToken,
+    archived,
   } = req.body || {};
   const patch = {};
   if (purpose !== undefined) patch.purpose = purpose;
@@ -205,6 +210,7 @@ router.patch('/:id', (req, res) => {
   if (trackerProjectOrRepo !== undefined) patch.trackerProjectOrRepo = trackerProjectOrRepo;
   if (trackerEmail !== undefined) patch.trackerEmail = trackerEmail;
   if (trackerToken !== undefined) patch.trackerToken = trackerToken;
+  if (archived !== undefined) patch.archived = !!archived;
   const updated = db.update(app.id, patch);
   res.json(updated);
 });
@@ -449,7 +455,7 @@ router.post('/:id/export/github-wiki', async (req, res) => {
 // project's own data dir — apps can live anywhere on disk, so there's no
 // single natural "portfolio root" to write under otherwise).
 router.post('/export/portfolio-static-site', (req, res) => {
-  const apps = db.loadAll();
+  const apps = db.loadAll().filter((a) => !a.archived);
   if (!apps.length) return res.status(400).json({ error: 'No applications to export.' });
   try {
     const outDir = path.join(__dirname, '..', '..', 'data', 'portfolio-export');

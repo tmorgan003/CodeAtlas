@@ -353,6 +353,7 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
 .stale-age { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
 
 #app-table tbody tr { animation-fill-mode: both; }
+#app-table tbody tr.row-archived { opacity: 0.55; }
 #app-table tbody tr.row-enter { animation: rowEnter var(--dur-base) var(--ease-out); }
 
 @keyframes rowEnter {
