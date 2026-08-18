@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { fingerprintIssue } = require('./triage');
 const { getOwner } = require('./ownership');
+const { buildMermaidFlowchart, buildDiagramCaption } = require('./mermaidFlow');
 
 function slugify(name) {
   return name
@@ -317,6 +318,21 @@ function writeDataModel(wikiDir, models, routeGroups) {
 
 // ---- Process-Flows/*.md ----
 
+// Appends the entry point's Mermaid diagram (captioned, in a fenced
+// ```mermaid block) when its trace resolved at least one node beyond the
+// entry itself — a trace with only the entry node (unresolved handler, or a
+// handler that makes no calls this scan can classify) adds nothing a
+// diagram would show, so it's skipped rather than rendering an empty box.
+function appendFlowDiagramLines(lines, route) {
+  if (!route.flowTrace || route.flowTrace.nodes.length < 2) return;
+  lines.push(buildDiagramCaption(route));
+  lines.push('');
+  lines.push('```mermaid');
+  lines.push(buildMermaidFlowchart(route.flowTrace));
+  lines.push('```');
+  lines.push('');
+}
+
 function writeProcessFlowPage(wikiDir, group) {
   const lines = [];
   lines.push(`# Process Flow: ${group.name}`);
@@ -328,10 +344,31 @@ function writeProcessFlowPage(wikiDir, group) {
     lines.push('');
     lines.push(`Handled in \`${r.file}\` (line ${r.line}) by \`${r.handlerName}\`.${r.traced ? '' : ' _(handler body not resolved by static scan — trace below is limited.)_'}`);
     lines.push('');
+    appendFlowDiagramLines(lines, r);
     r.steps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
     lines.push('');
   }
   write(wikiDir, `Process-Flows/${group.slug}.md`, lines.join('\n'));
+}
+
+// ---- Process-Flows.md fallback (no entry points detected anywhere) ----
+function writeProcessFlowsFallback(wikiDir, structureInfo) {
+  const lines = [];
+  lines.push('# Process Flows');
+  lines.push('');
+  lines.push('[Home](Home.md) · [Architecture](Architecture.md)');
+  lines.push('');
+  lines.push('No entry points were detected in this codebase, so there is nothing to diagram.');
+  lines.push('');
+  lines.push('CodeAtlas looked for:');
+  lines.push('');
+  lines.push('- HTTP routes/handlers (Express-style `app.METHOD(...)`, Flask, FastAPI, Go `router.METHOD`/`http.HandleFunc`, Rails routes, Spring MVC annotations, Laravel `Route::`)');
+  lines.push('- Next.js file-based routes (`app/**/route.ts`, `app/**/page.tsx`, `pages/api/**`, `pages/**`)');
+  lines.push('');
+  lines.push(`Detected frameworks: ${structureInfo.frameworks.length ? structureInfo.frameworks.join(', ') : 'none'}.`);
+  lines.push('');
+  lines.push("If this is a library, a background-job-only service, or uses a routing style this scanner doesn't recognize yet, that would explain the empty result — CLI command frameworks (commander/yargs) and cron/queue-worker entry points aren't detected yet either.");
+  write(wikiDir, 'Process-Flows.md', lines.join('\n'));
 }
 
 function groupRoutes(allRoutes) {
@@ -511,6 +548,7 @@ module.exports = {
   writeDataDictionaryPage,
   writeDataModel,
   writeProcessFlowPage,
+  writeProcessFlowsFallback,
   groupRoutes,
   writeIssues,
   writeSetup,

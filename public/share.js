@@ -85,8 +85,15 @@ function closeMarkdownList(state) {
 
 function tryCodeFence(line, state) {
   if (!line.startsWith('```')) return false;
-  state.inCode = !state.inCode;
-  state.html.push(state.inCode ? '<pre><code>' : '</code></pre>');
+  if (!state.inCode) {
+    state.inCode = true;
+    state.codeLang = line.slice(3).trim();
+    state.html.push(state.codeLang === 'mermaid' ? '<pre class="mermaid">' : '<pre><code>');
+  } else {
+    state.html.push(state.codeLang === 'mermaid' ? '</pre>' : '</code></pre>');
+    state.inCode = false;
+    state.codeLang = '';
+  }
   return true;
 }
 
@@ -132,7 +139,7 @@ function tryHrOrBlank(line, state) {
 }
 
 function renderMarkdown(md, baseDir) {
-  const state = { inTable: false, inCode: false, listOpen: false, html: [] };
+  const state = { inTable: false, inCode: false, codeLang: '', listOpen: false, html: [] };
 
   for (const raw of md.split('\n')) {
     const line = raw.replace(/\r$/, '');
@@ -155,11 +162,40 @@ function renderMarkdown(md, baseDir) {
 
 let currentWikiDir = '';
 
+// Same CDN-loaded mermaid.js as the main app (see index.html/app.js) — this
+// page is deliberately self-contained rather than importing app.js (see the
+// header comment), so it gets its own small init + render-after-load.
+if (window.mermaid) {
+  window.mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    themeVariables: {
+      background: '#0f1115',
+      primaryColor: '#171a21',
+      primaryTextColor: '#e6e8ec',
+      primaryBorderColor: '#2a2e37',
+      lineColor: '#4595b5',
+    },
+  });
+}
+
+async function renderMermaidDiagrams(container) {
+  if (!window.mermaid) return;
+  const nodes = container.querySelectorAll('pre.mermaid');
+  if (!nodes.length) return;
+  try {
+    await window.mermaid.run({ nodes, suppressErrors: true });
+  } catch {
+    // a malformed diagram shouldn't take the rest of the page down with it
+  }
+}
+
 async function loadPage(wikiPath) {
   try {
     const { path: resolvedPath, content } = await shareApi(`/wiki-file?path=${encodeURIComponent(wikiPath)}`);
     currentWikiDir = resolvedPath.includes('/') ? resolvedPath.slice(0, resolvedPath.lastIndexOf('/')) : '';
     wikiViewEl.innerHTML = renderMarkdown(content, currentWikiDir);
+    renderMermaidDiagrams(wikiViewEl);
   } catch (err) {
     wikiViewEl.textContent = 'Could not load page: ' + err.message;
   }

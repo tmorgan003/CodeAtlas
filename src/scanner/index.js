@@ -5,6 +5,7 @@ const { listTopLevel, collectFiles, readFileSafe } = require('./walk');
 const { extractComponentsFromFile } = require('./components');
 const { detectDataModels } = require('./dataLayer');
 const { detectRoutes } = require('./processFlows');
+const { traceEntryPoints } = require('./entryPointTrace');
 const { scanFile, checkKnownVulnerableDeps, findDeadCode, attachCweInfo } = require('./issues');
 const { runNpmAudit } = require('./npmAudit');
 const { runOsvScan } = require('./osvScan');
@@ -414,6 +415,14 @@ async function runScan(rootPath, meta, onProgress) {
 
   const models = ctx.allModels;
   const routeGroups = wiki.groupRoutes(ctx.allRoutes);
+
+  // Process-flow diagrams: mutates each route in ctx.allRoutes (and so each
+  // route inside routeGroups.groups too — same object references) with a
+  // .flowTrace, which writeProcessFlowPage below embeds as a Mermaid
+  // diagram. Pure graph traversal over already-collected per-file data, so
+  // this doesn't re-parse the codebase (see entryPointTrace.js's header).
+  traceEntryPoints(ctx.allRoutes, ctx.allFileComponents, (relPath) => readFileSafe(path.join(rootPath, relPath)));
+  if (!routeGroups.groups.length) wiki.writeProcessFlowsFallback(wikiDir, structureInfo);
 
   // Security scanning coverage: attach a CWE/OWASP citation + a short "why
   // this matters" explanation to every issue whose category maps to a real

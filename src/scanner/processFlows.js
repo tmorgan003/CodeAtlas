@@ -368,10 +368,91 @@ function detectLaravelRoutes(relPath, content) {
   return routes;
 }
 
+// ---- Next.js: file-based routing (Pages Router `pages/`, App Router `app/`) ----
+// Unlike every detector above, the route path comes from the file's own
+// location, not a pattern inside its content — [param] and [...catchall]
+// segments map to :param/:param* the same way Express path params render
+// elsewhere in this file's output. Route groups `(group)`, parallel routes
+// `@slot`, and optional catch-all `[[...slug]]` aren't covered — see the
+// scan's own known-limitations note.
+
+const NEXT_HTTP_VERBS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+
+function afterRoot(relPath, root) {
+  const m = new RegExp(`(?:^|/)${root}/(.+)$`).exec(relPath);
+  return m ? m[1] : null;
+}
+
+function nextFilePathToUrl(afterRootPath) {
+  let p = afterRootPath.replace(/\.(jsx?|tsx?)$/, '');
+  p = p.replace(/\/(page|route)$/, '').replace(/\/index$/, '');
+  if (p === 'index' || p === '') return '/';
+  p = p.replace(/\[\.\.\.(\w+)\]/g, ':$1*');
+  p = p.replace(/\[(\w+)\]/g, ':$1');
+  return '/' + p;
+}
+
+function defaultExportName(content) {
+  const m = /export\s+default\s+(?:async\s+)?function\s+(\w+)/.exec(content) || /export\s+default\s+(\w+)/.exec(content);
+  return m ? { name: m[1], index: m.index } : null;
+}
+
+function detectNextRoutes(relPath, content) {
+  const routes = [];
+  if (!/\.(jsx?|tsx?)$/.test(relPath)) return routes;
+
+  const appRest = afterRoot(relPath, 'app');
+  const pagesRest = afterRoot(relPath, 'pages');
+
+  if (appRest && /\/route\.(js|ts)$/.test(relPath)) {
+    const urlPath = nextFilePathToUrl(appRest);
+    for (const verb of NEXT_HTTP_VERBS) {
+      const m = new RegExp(`export\\s+(?:async\\s+)?function\\s+${verb}\\b`).exec(content);
+      if (!m) continue;
+      routes.push({
+        method: verb, path: urlPath, handlerName: verb, file: relPath, line: lineOf(content, m.index),
+        steps: shallowSteps(verb, urlPath, verb, 'Next.js App Router route handler — file-based route, static scan does not trace the function body beyond call detection.'),
+        traced: false,
+      });
+    }
+  } else if (appRest && /\/page\.(jsx?|tsx?)$/.test(relPath)) {
+    const urlPath = nextFilePathToUrl(appRest);
+    const exp = defaultExportName(content);
+    const handlerName = (exp && exp.name) || 'Page';
+    routes.push({
+      method: 'PAGE', path: urlPath, handlerName, file: relPath, line: exp ? lineOf(content, exp.index) : 1,
+      steps: shallowSteps('PAGE', urlPath, handlerName, 'Next.js App Router page component — rendered on navigation, not a request handler in the API-route sense.'),
+      traced: false,
+    });
+  } else if (pagesRest && pagesRest.startsWith('api/')) {
+    const urlPath = nextFilePathToUrl(pagesRest);
+    const exp = defaultExportName(content);
+    const handlerName = (exp && exp.name) || '(default export)';
+    routes.push({
+      method: 'ANY', path: urlPath, handlerName, file: relPath, line: exp ? lineOf(content, exp.index) : 1,
+      steps: shallowSteps('ANY', urlPath, handlerName, 'Next.js Pages Router API handler — a single function handles all methods; check req.method inside for per-verb branching.'),
+      traced: false,
+    });
+  } else if (pagesRest && !pagesRest.startsWith('_')) {
+    const urlPath = nextFilePathToUrl(pagesRest);
+    const exp = defaultExportName(content);
+    const handlerName = (exp && exp.name) || 'Page';
+    routes.push({
+      method: 'PAGE', path: urlPath, handlerName, file: relPath, line: exp ? lineOf(content, exp.index) : 1,
+      steps: shallowSteps('PAGE', urlPath, handlerName, 'Next.js Pages Router page component — rendered on navigation, not a request handler in the API-route sense.'),
+      traced: false,
+    });
+  }
+  return routes;
+}
+
 function detectRoutes(relPath, content, ext) {
   const routes = [];
   if (ext === '.js' || ext === '.ts' || ext === '.mjs' || ext === '.cjs') {
     routes.push(...detectExpressRoutes(relPath, content));
+  }
+  if (ext === '.js' || ext === '.ts' || ext === '.jsx' || ext === '.tsx') {
+    routes.push(...detectNextRoutes(relPath, content));
   }
   if (ext === '.py') {
     routes.push(...detectFlaskRoutes(relPath, content));

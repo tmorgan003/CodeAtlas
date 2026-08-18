@@ -56,30 +56,107 @@ function isRequireCall(node) {
     && node.arguments[0] && ts.isStringLiteral(node.arguments[0]);
 }
 
+// ---- Process-flow diagrams: direct-call collection + import bindings ----
+// Both purely additive to the returned shape — existing consumers (the
+// Components wiki page, the dependency graph, dead-code detection) only
+// ever read name/params/line/imports/exports and are unaffected.
+
+function isFunctionLikeNode(node) {
+  return ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node);
+}
+
+// Calls made directly in a function's own body — stops at a nested
+// function/arrow/method boundary so a callback's calls aren't attributed to
+// the outer function (same exclusion rule maintainability.js's N+1 check
+// already uses for the same reason).
+function collectDirectCalls(bodyNode, sourceFile) {
+  const calls = [];
+  function walk(n, isRoot) {
+    if (!isRoot && isFunctionLikeNode(n)) return;
+    if (ts.isCallExpression(n)) {
+      calls.push({ callee: n.expression.getText(sourceFile), line: sourceFile.getLineAndCharacterOfPosition(n.getStart(sourceFile)).line + 1 });
+    }
+    ts.forEachChild(n, (child) => walk(child, false));
+  }
+  walk(bodyNode, true);
+  return calls;
+}
+
+// import Foo, { a, b as c } from './x'  ->  [{local:'Foo',...},{local:'a',...},{local:'c',...}]
+// import * as ns from './x'             ->  [{local:'ns', source:'./x'}]
+function collectImportBindings(node) {
+  const source = node.moduleSpecifier.text;
+  const bindings = [];
+  const clause = node.importClause;
+  if (!clause) return bindings;
+  if (clause.name) bindings.push({ local: clause.name.text, source });
+  if (clause.namedBindings) {
+    if (ts.isNamespaceImport(clause.namedBindings)) {
+      bindings.push({ local: clause.namedBindings.name.text, source });
+    } else if (ts.isNamedImports(clause.namedBindings)) {
+      for (const el of clause.namedBindings.elements) bindings.push({ local: el.name.text, source });
+    }
+  }
+  return bindings;
+}
+
+// const x = require('./y')           ->  [{local:'x', source:'./y'}]
+// const { a, b: c } = require('./y') ->  [{local:'a',...},{local:'c',...}]
+function collectRequireBindings(node) {
+  const source = node.arguments[0].text;
+  const bindings = [];
+  const decl = node.parent && ts.isVariableDeclaration(node.parent) ? node.parent : null;
+  if (!decl) return bindings;
+  if (ts.isIdentifier(decl.name)) {
+    bindings.push({ local: decl.name.text, source });
+  } else if (ts.isObjectBindingPattern(decl.name)) {
+    for (const el of decl.name.elements) {
+      if (ts.isIdentifier(el.name)) bindings.push({ local: el.name.text, source });
+    }
+  }
+  return bindings;
+}
+
 function extractJsLikeAst(relPath, content, ext) {
   const sourceFile = ts.createSourceFile(relPath, content, ts.ScriptTarget.Latest, true, SCRIPT_KIND[ext] || ts.ScriptKind.JS);
   const functions = [];
   const classes = [];
   const imports = new Set();
+  const importBindings = [];
   const exportsList = [];
 
   const lineOfPos = (pos) => sourceFile.getLineAndCharacterOfPosition(pos).line + 1;
   const paramsText = (params) => params.map((p) => p.getText(sourceFile)).join(', ');
 
   function visitFunctionDeclaration(node) {
-    functions.push({ name: node.name.text, params: paramsText(node.parameters), line: lineOfPos(node.getStart(sourceFile)) });
+    functions.push({
+      name: node.name.text,
+      params: paramsText(node.parameters),
+      line: lineOfPos(node.getStart(sourceFile)),
+      calls: node.body ? collectDirectCalls(node.body, sourceFile) : [],
+    });
     if (hasExportModifier(node)) exportsList.push(node.name.text);
   }
 
   function visitFunctionVariableDeclaration(node) {
-    functions.push({ name: node.name.text, params: paramsText(node.initializer.parameters), line: lineOfPos(node.getStart(sourceFile)) });
+    functions.push({
+      name: node.name.text,
+      params: paramsText(node.initializer.parameters),
+      line: lineOfPos(node.getStart(sourceFile)),
+      calls: collectDirectCalls(node.initializer.body, sourceFile),
+    });
     const varStmt = node.parent && node.parent.parent;
     if (varStmt && ts.isVariableStatement(varStmt) && hasExportModifier(varStmt)) exportsList.push(node.name.text);
   }
 
   function visitModuleExportsAssignment(node) {
     const name = node.left.name.text;
-    functions.push({ name, params: paramsText(node.right.parameters), line: lineOfPos(node.getStart(sourceFile)) });
+    functions.push({
+      name,
+      params: paramsText(node.right.parameters),
+      line: lineOfPos(node.getStart(sourceFile)),
+      calls: collectDirectCalls(node.right.body, sourceFile),
+    });
     exportsList.push(name);
   }
 
@@ -89,6 +166,7 @@ function extractJsLikeAst(relPath, content, ext) {
       name: `${className}.${member.name.getText(sourceFile)}`,
       params: paramsText(member.parameters),
       line: lineOfPos(member.getStart(sourceFile)),
+      calls: member.body ? collectDirectCalls(member.body, sourceFile) : [],
     });
   }
 
@@ -105,13 +183,18 @@ function extractJsLikeAst(relPath, content, ext) {
     else if (isFunctionVariableDeclaration(node)) visitFunctionVariableDeclaration(node);
     else if (isModuleExportsAssignment(node)) visitModuleExportsAssignment(node);
     else if (isNamedClassDeclaration(node)) visitClassDeclaration(node);
-    else if (isModuleSpecifierImport(node)) imports.add(node.moduleSpecifier.text);
-    else if (isRequireCall(node)) imports.add(node.arguments[0].text);
+    else if (isModuleSpecifierImport(node)) {
+      imports.add(node.moduleSpecifier.text);
+      importBindings.push(...collectImportBindings(node));
+    } else if (isRequireCall(node)) {
+      imports.add(node.arguments[0].text);
+      importBindings.push(...collectRequireBindings(node));
+    }
     ts.forEachChild(node, visit);
   }
 
   visit(sourceFile);
-  return { functions, classes, imports: [...imports], exports: exportsList };
+  return { functions, classes, imports: [...imports], importBindings, exports: exportsList };
 }
 
 // Regex fallback, used only if the AST walk throws on something unexpected.

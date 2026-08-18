@@ -76,6 +76,39 @@ themeToggleBtn.addEventListener('click', () => {
   applyTheme(currentTheme);
 });
 
+// ---- Mermaid diagrams (Process Flow pages) ----
+// Loaded from CDN in index.html; startOnLoad is off since wiki content is
+// injected dynamically (innerHTML) rather than present at page load, so
+// renderMermaidDiagrams runs it manually after each wiki page render.
+// Colors match this feature's own classDef palette (see mermaidFlow.js on
+// the server) rather than following the light/dark toggle — kept as one
+// consistent scheme regardless of page theme, the same way a syntax-
+// highlighted code block usually does.
+if (window.mermaid) {
+  window.mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    themeVariables: {
+      background: '#0f1115',
+      primaryColor: '#171a21',
+      primaryTextColor: '#e6e8ec',
+      primaryBorderColor: '#2a2e37',
+      lineColor: '#4595b5',
+    },
+  });
+}
+
+async function renderMermaidDiagrams(container) {
+  if (!window.mermaid) return;
+  const nodes = container.querySelectorAll('pre.mermaid');
+  if (!nodes.length) return;
+  try {
+    await window.mermaid.run({ nodes, suppressErrors: true });
+  } catch {
+    // a malformed diagram shouldn't take the rest of the page down with it
+  }
+}
+
 // ---- Folder browser ----
 // Browsers won't hand JS a real absolute path from a directory picker, so
 // this walks the server's own filesystem (same machine the scan itself
@@ -4093,6 +4126,12 @@ async function loadWikiPage(id, wikiPath) {
       if (isWikiPageEditable(resolvedPath)) {
         wikiView.appendChild(renderWikiEditToolbar(id, resolvedPath, content, overridden, updatedAt));
       }
+      // Must run inside this callback, not after withViewTransition(...)
+      // returns — document.startViewTransition() invokes its update
+      // callback asynchronously (after capturing the "before" snapshot), so
+      // code sequenced after the call runs before wikiView.innerHTML is
+      // actually applied and finds no <pre class="mermaid"> to render yet.
+      renderMermaidDiagrams(wikiView);
     });
   } catch (err) {
     wikiView.textContent = 'Could not load page: ' + err.message;
@@ -4293,8 +4332,15 @@ function closeMarkdownList(state) {
 
 function tryCodeFence(line, state) {
   if (!line.startsWith('```')) return false;
-  state.inCode = !state.inCode;
-  state.html.push(state.inCode ? '<pre><code>' : '</code></pre>');
+  if (!state.inCode) {
+    state.inCode = true;
+    state.codeLang = line.slice(3).trim();
+    state.html.push(state.codeLang === 'mermaid' ? '<pre class="mermaid">' : '<pre><code>');
+  } else {
+    state.html.push(state.codeLang === 'mermaid' ? '</pre>' : '</code></pre>');
+    state.inCode = false;
+    state.codeLang = '';
+  }
   return true;
 }
 
@@ -4340,7 +4386,7 @@ function tryHrOrBlank(line, state) {
 }
 
 function renderMarkdown(md, baseDir, appId) {
-  const state = { inTable: false, inCode: false, listOpen: false, html: [] };
+  const state = { inTable: false, inCode: false, codeLang: '', listOpen: false, html: [] };
 
   for (const raw of md.split('\n')) {
     const line = raw.replace(/\r$/, '');
