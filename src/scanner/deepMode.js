@@ -70,4 +70,68 @@ Respond with ONLY the JSON object.`;
   };
 }
 
-module.exports = { buildEnrichment };
+// Junior-developer learning path, continued: issues.js's CATEGORY_CODE_EXAMPLE
+// gives every scan a generic before/after for free (no LLM, no cost) — this
+// goes further, when Deep Scan is already paying for a Claude call anyway,
+// by proposing an actual diff for the SPECIFIC flagged line using its real
+// surrounding source, not a generic shape. Deliberately scoped to a small
+// set of categories where a mechanical, context-free fix is usually
+// correct (moving a literal into an env var, escaping an interpolation,
+// adding a page size) — not every category, since something like "Possible
+// Dead Code" or "High Cyclomatic Complexity" is a judgment call a
+// single-shot LLM call shouldn't be trusted to just rewrite for you.
+const DIFF_ELIGIBLE_CATEGORIES = new Set([
+  'Hardcoded Secret',
+  'Possible High-Entropy Secret',
+  'Cross-Site Scripting (XSS) Risk',
+  'Unbounded Loop Over Unpaginated Data',
+]);
+const MAX_DIFF_PROPOSALS = 5;
+const CONTEXT_LINES = 6;
+
+function fileContextAround(fileContent, line, contextLines = CONTEXT_LINES) {
+  const lines = fileContent.split('\n');
+  const start = Math.max(0, line - 1 - contextLines);
+  const end = Math.min(lines.length, line + contextLines);
+  return lines.slice(start, end).map((l, i) => `${start + i + 1}: ${l}`).join('\n');
+}
+
+// readFile(relPath) -> string | null, supplied by the caller (already knows
+// how to safely resolve a relPath against the scan root — see walk.js's
+// readFileSafe) rather than this module reaching outside its own concern to
+// touch the filesystem/scan root itself.
+async function proposeFixDiffs(issues, readFile, timeoutMs = 60000, promptFn = runClaudePrompt) {
+  const eligible = issues.filter((i) => DIFF_ELIGIBLE_CATEGORIES.has(i.category)).slice(0, MAX_DIFF_PROPOSALS);
+  const results = {};
+  for (const issue of eligible) {
+    const raw = readFile(issue.file);
+    if (!raw) continue;
+    const context = fileContextAround(raw, issue.line);
+    const prompt = `You are proposing a minimal, mechanical code fix for a single flagged static-analysis finding. Respond with ONLY a single JSON object, no markdown fences and no other text, matching exactly this shape:
+{"diff": "a short snippet showing the minimal change as removed/added lines (e.g. lines prefixed with - for old code and + for new code), or null if you can't propose a safe fix from this context alone", "explanation": "one short sentence"}
+
+Finding: ${issue.category} — ${issue.summary}
+File: ${issue.file}, flagged at line ${issue.line}
+
+Source context (line numbers included, do not include them in your diff):
+${context}
+
+Respond with ONLY the JSON object.`;
+    const rawResponse = await promptFn(prompt, timeoutMs);
+    const parsed = extractJsonBlock(rawResponse);
+    if (parsed && typeof parsed.diff === 'string' && parsed.diff.trim()) {
+      results[fingerprintKey(issue)] = { diff: parsed.diff, explanation: typeof parsed.explanation === 'string' ? parsed.explanation : '' };
+    }
+  }
+  return results;
+}
+
+// Mirrors triage.js's fingerprintIssue exactly (category+file+line+summary)
+// without importing triage.js itself — that module already depends on
+// suppressionRules.js, and this one has no other reason to sit in that
+// dependency chain for one string-building function.
+function fingerprintKey(issue) {
+  return `${issue.category}::${issue.file}::${issue.line}::${issue.summary}`;
+}
+
+module.exports = { buildEnrichment, proposeFixDiffs, DIFF_ELIGIBLE_CATEGORIES };

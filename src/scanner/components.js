@@ -30,6 +30,32 @@ function hasExportModifier(node) {
   return !!(mods && mods.some((m) => m.kind === ts.SyntaxKind.ExportKeyword));
 }
 
+// Node-kind predicates used by visit()'s dispatch below — split out so each
+// compound condition contributes to its own (small) function's complexity
+// instead of visit()'s, which is what drove visit() to 34 when this was all
+// inlined as one long if/else-if chain.
+function isNamedFunctionDeclaration(node) {
+  return ts.isFunctionDeclaration(node) && !!node.name;
+}
+function isFunctionVariableDeclaration(node) {
+  return ts.isVariableDeclaration(node) && node.name && ts.isIdentifier(node.name) && node.initializer && isFunctionLike(node.initializer);
+}
+function isModuleExportsAssignment(node) {
+  if (!ts.isBinaryExpression(node) || node.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return false;
+  if (!ts.isPropertyAccessExpression(node.left) || !isFunctionLike(node.right)) return false;
+  return /^(module\.exports|exports)\./.test(node.left.getText(node.getSourceFile()));
+}
+function isNamedClassDeclaration(node) {
+  return ts.isClassDeclaration(node) && !!node.name;
+}
+function isModuleSpecifierImport(node) {
+  return ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier);
+}
+function isRequireCall(node) {
+  return ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'require'
+    && node.arguments[0] && ts.isStringLiteral(node.arguments[0]);
+}
+
 function extractJsLikeAst(relPath, content, ext) {
   const sourceFile = ts.createSourceFile(relPath, content, ts.ScriptTarget.Latest, true, SCRIPT_KIND[ext] || ts.ScriptKind.JS);
   const functions = [];
@@ -40,57 +66,47 @@ function extractJsLikeAst(relPath, content, ext) {
   const lineOfPos = (pos) => sourceFile.getLineAndCharacterOfPosition(pos).line + 1;
   const paramsText = (params) => params.map((p) => p.getText(sourceFile)).join(', ');
 
+  function visitFunctionDeclaration(node) {
+    functions.push({ name: node.name.text, params: paramsText(node.parameters), line: lineOfPos(node.getStart(sourceFile)) });
+    if (hasExportModifier(node)) exportsList.push(node.name.text);
+  }
+
+  function visitFunctionVariableDeclaration(node) {
+    functions.push({ name: node.name.text, params: paramsText(node.initializer.parameters), line: lineOfPos(node.getStart(sourceFile)) });
+    const varStmt = node.parent && node.parent.parent;
+    if (varStmt && ts.isVariableStatement(varStmt) && hasExportModifier(varStmt)) exportsList.push(node.name.text);
+  }
+
+  function visitModuleExportsAssignment(node) {
+    const name = node.left.name.text;
+    functions.push({ name, params: paramsText(node.right.parameters), line: lineOfPos(node.getStart(sourceFile)) });
+    exportsList.push(name);
+  }
+
+  function visitClassMember(className, member) {
+    if (!ts.isMethodDeclaration(member) || !member.name) return;
+    functions.push({
+      name: `${className}.${member.name.getText(sourceFile)}`,
+      params: paramsText(member.parameters),
+      line: lineOfPos(member.getStart(sourceFile)),
+    });
+  }
+
+  function visitClassDeclaration(node) {
+    const heritage = node.heritageClauses && node.heritageClauses.find((h) => h.token === ts.SyntaxKind.ExtendsKeyword);
+    const extendsName = heritage ? heritage.types[0].expression.getText(sourceFile) : null;
+    classes.push({ name: node.name.text, extends: extendsName, line: lineOfPos(node.getStart(sourceFile)) });
+    if (hasExportModifier(node)) exportsList.push(node.name.text);
+    for (const member of node.members) visitClassMember(node.name.text, member);
+  }
+
   function visit(node) {
-    if (ts.isFunctionDeclaration(node) && node.name) {
-      functions.push({ name: node.name.text, params: paramsText(node.parameters), line: lineOfPos(node.getStart(sourceFile)) });
-      if (hasExportModifier(node)) exportsList.push(node.name.text);
-    } else if (
-      ts.isVariableDeclaration(node) &&
-      node.name &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      isFunctionLike(node.initializer)
-    ) {
-      functions.push({ name: node.name.text, params: paramsText(node.initializer.parameters), line: lineOfPos(node.getStart(sourceFile)) });
-      const varStmt = node.parent && node.parent.parent;
-      if (varStmt && ts.isVariableStatement(varStmt) && hasExportModifier(varStmt)) exportsList.push(node.name.text);
-    } else if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isPropertyAccessExpression(node.left) &&
-      isFunctionLike(node.right)
-    ) {
-      const lhsText = node.left.getText(sourceFile);
-      if (/^(module\.exports|exports)\./.test(lhsText)) {
-        const name = node.left.name.text;
-        functions.push({ name, params: paramsText(node.right.parameters), line: lineOfPos(node.getStart(sourceFile)) });
-        exportsList.push(name);
-      }
-    } else if (ts.isClassDeclaration(node) && node.name) {
-      const heritage = node.heritageClauses && node.heritageClauses.find((h) => h.token === ts.SyntaxKind.ExtendsKeyword);
-      const extendsName = heritage ? heritage.types[0].expression.getText(sourceFile) : null;
-      classes.push({ name: node.name.text, extends: extendsName, line: lineOfPos(node.getStart(sourceFile)) });
-      if (hasExportModifier(node)) exportsList.push(node.name.text);
-      for (const member of node.members) {
-        if (ts.isMethodDeclaration(member) && member.name) {
-          functions.push({
-            name: `${node.name.text}.${member.name.getText(sourceFile)}`,
-            params: paramsText(member.parameters),
-            line: lineOfPos(member.getStart(sourceFile)),
-          });
-        }
-      }
-    } else if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      imports.add(node.moduleSpecifier.text);
-    } else if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === 'require' &&
-      node.arguments[0] &&
-      ts.isStringLiteral(node.arguments[0])
-    ) {
-      imports.add(node.arguments[0].text);
-    }
+    if (isNamedFunctionDeclaration(node)) visitFunctionDeclaration(node);
+    else if (isFunctionVariableDeclaration(node)) visitFunctionVariableDeclaration(node);
+    else if (isModuleExportsAssignment(node)) visitModuleExportsAssignment(node);
+    else if (isNamedClassDeclaration(node)) visitClassDeclaration(node);
+    else if (isModuleSpecifierImport(node)) imports.add(node.moduleSpecifier.text);
+    else if (isRequireCall(node)) imports.add(node.arguments[0].text);
     ts.forEachChild(node, visit);
   }
 

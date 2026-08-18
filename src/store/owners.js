@@ -4,28 +4,17 @@
 // field to a real directory — a saved, de-duplicated list of known owner
 // names that new/updated apps are validated against.
 
-const fs = require('fs');
 const path = require('path');
+const jsonFileStore = require('../jsonFileStore');
 
 const OWNERS_PATH = path.join(__dirname, '..', '..', 'data', 'owners.json');
 
-function ensure() {
-  fs.mkdirSync(path.dirname(OWNERS_PATH), { recursive: true });
-  if (!fs.existsSync(OWNERS_PATH)) fs.writeFileSync(OWNERS_PATH, '[]', 'utf8');
-}
-
 function loadAll() {
-  ensure();
-  try {
-    return JSON.parse(fs.readFileSync(OWNERS_PATH, 'utf8'));
-  } catch {
-    return [];
-  }
+  return jsonFileStore.load(OWNERS_PATH, []);
 }
 
 function saveAll(owners) {
-  ensure();
-  fs.writeFileSync(OWNERS_PATH, JSON.stringify(owners, null, 2), 'utf8');
+  jsonFileStore.save(OWNERS_PATH, owners);
 }
 
 function add(name) {

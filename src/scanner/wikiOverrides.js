@@ -9,8 +9,8 @@
 // the generated .md file to disk on every scan; this map is never touched
 // by that write, only ever read by the route that serves it).
 
-const fs = require('fs');
 const path = require('path');
+const jsonFileStore = require('../jsonFileStore');
 
 const OVERRIDES_DIR = path.join(__dirname, '..', '..', 'data', 'wiki-overrides');
 
@@ -19,18 +19,11 @@ function overridesFile(appId) {
 }
 
 function loadOverrides(appId) {
-  const file = overridesFile(appId);
-  if (!fs.existsSync(file)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return {};
-  }
+  return jsonFileStore.load(overridesFile(appId), {});
 }
 
 function saveOverrides(appId, map) {
-  fs.mkdirSync(OVERRIDES_DIR, { recursive: true });
-  fs.writeFileSync(overridesFile(appId), JSON.stringify(map, null, 2), 'utf8');
+  jsonFileStore.save(overridesFile(appId), map);
 }
 
 function setOverride(appId, pagePath, content) {

@@ -13,14 +13,7 @@ const execFileAsync = promisify(execFile);
 const SEVERITY_MAP = { critical: 'Critical', high: 'High', moderate: 'Medium', low: 'Low', info: 'Low' };
 const MAX_ISSUES = 30;
 
-// Async (execFile, not execFileSync) — a synchronous `npm audit` call blocks
-// the whole Node event loop for however long it takes to hit the registry,
-// freezing every other request the server is handling in the meantime.
-async function runNpmAudit(rootPath) {
-  const pkgJsonPath = path.join(rootPath, 'package.json');
-  if (!fs.existsSync(pkgJsonPath)) return null;
-
-  let stdout;
+async function fetchNpmAuditStdout(rootPath) {
   try {
     // No dynamic input in this command string — safe to pass as one literal
     // via the shell (needed on Windows, where `npm` resolves to npm.cmd).
@@ -31,46 +24,62 @@ async function runNpmAudit(rootPath) {
       windowsHide: true,
       shell: true,
     });
-    stdout = result.stdout;
+    return result.stdout;
   } catch (err) {
     // npm audit exits non-zero when vulnerabilities are found — the JSON we
     // want is still on stdout in that case, so only give up if there's none.
-    stdout = err && err.stdout ? err.stdout.toString('utf8') : null;
-    if (!stdout) return null;
+    return err && err.stdout ? err.stdout.toString('utf8') : null;
   }
+}
 
+function parseNpmAuditVulnerabilities(stdout) {
+  if (!stdout) return null;
   let report;
   try {
     report = JSON.parse(stdout);
   } catch {
     return null;
   }
-
   const vulns = report.vulnerabilities;
-  if (!vulns || typeof vulns !== 'object') return null;
+  return vulns && typeof vulns === 'object' ? vulns : null;
+}
 
-  const issues = [];
+function describeFixAvailability(info) {
+  if (!info.fixAvailable) return 'No automatic fix available yet — check the advisory for guidance.';
+  if (typeof info.fixAvailable !== 'object') return 'Fix available via `npm audit fix`.';
+  const majorNote = info.fixAvailable.isSemVerMajor ? ' (major version bump)' : '';
+  return `Fix available: upgrade to ${info.fixAvailable.name}@${info.fixAvailable.version}${majorNote}.`;
+}
+
+function buildNpmAuditIssue(name, info) {
+  const severity = SEVERITY_MAP[info.severity] || 'Medium';
+  const via = Array.isArray(info.via)
+    ? info.via.map((v) => (typeof v === 'string' ? v : v.title)).filter(Boolean).slice(0, 3).join('; ')
+    : String(info.via || '');
+  return {
+    file: 'package.json',
+    line: 1,
+    severity,
+    category: 'Outdated/Vulnerable Dependency',
+    source: 'dependency-audit',
+    summary: `${name} (${info.range || 'range unknown'}) — ${info.severity} severity. ${via}`,
+    suggestedFix: `${describeFixAvailability(info)} (Live data from \`npm audit\`.)`,
+  };
+}
+
+// Async (execFile, not execFileSync) — a synchronous `npm audit` call blocks
+// the whole Node event loop for however long it takes to hit the registry,
+// freezing every other request the server is handling in the meantime.
+async function runNpmAudit(rootPath) {
+  const pkgJsonPath = path.join(rootPath, 'package.json');
+  if (!fs.existsSync(pkgJsonPath)) return null;
+
+  const stdout = await fetchNpmAuditStdout(rootPath);
+  const vulns = parseNpmAuditVulnerabilities(stdout);
+  if (!vulns) return null;
+
   const entries = Object.entries(vulns);
-  for (const [name, info] of entries.slice(0, MAX_ISSUES)) {
-    const severity = SEVERITY_MAP[info.severity] || 'Medium';
-    const via = Array.isArray(info.via)
-      ? info.via.map((v) => (typeof v === 'string' ? v : v.title)).filter(Boolean).slice(0, 3).join('; ')
-      : String(info.via || '');
-    const fixNote = info.fixAvailable
-      ? (typeof info.fixAvailable === 'object'
-        ? `Fix available: upgrade to ${info.fixAvailable.name}@${info.fixAvailable.version}${info.fixAvailable.isSemVerMajor ? ' (major version bump)' : ''}.`
-        : 'Fix available via `npm audit fix`.')
-      : 'No automatic fix available yet — check the advisory for guidance.';
-    issues.push({
-      file: 'package.json',
-      line: 1,
-      severity,
-      category: 'Outdated/Vulnerable Dependency',
-      source: 'dependency-audit',
-      summary: `${name} (${info.range || 'range unknown'}) — ${info.severity} severity. ${via}`,
-      suggestedFix: `${fixNote} (Live data from \`npm audit\`.)`,
-    });
-  }
+  const issues = entries.slice(0, MAX_ISSUES).map(([name, info]) => buildNpmAuditIssue(name, info));
   if (entries.length > MAX_ISSUES) {
     issues.push({
       file: 'package.json',

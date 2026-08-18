@@ -53,61 +53,69 @@ function classify(licenseStr) {
   return { status: 'unrecognized', license: licenseStr };
 }
 
+// Reads+parses a package.json, returning null for either a missing file or
+// a parse error — callers treat both the same way (skip/bail).
+function loadPackageJson(pkgJsonPath) {
+  if (!fs.existsSync(pkgJsonPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function buildLicenseIssue(name, version, result) {
+  if (result.status === 'missing') {
+    return {
+      file: 'package.json', line: 1, severity: 'Medium', category: 'License Compliance', source: 'dependency-audit',
+      summary: `${name}@${version} has no license field — can't confirm it's safe to use.`,
+      suggestedFix: "Check the package's repository or npm page for its actual license, or replace it with an alternative that declares one.",
+    };
+  }
+  if (result.status === 'restrictive') {
+    return {
+      file: 'package.json', line: 1, severity: result.severity, category: 'License Compliance', source: 'dependency-audit',
+      summary: `${name}@${version} is licensed under ${result.license}, a copyleft license that may impose obligations on this project.`,
+      suggestedFix: `Confirm ${result.license} is acceptable for this project's distribution model, or replace ${name} with a permissively-licensed alternative.`,
+    };
+  }
+  return {
+    file: 'package.json', line: 1, severity: 'Low', category: 'License Compliance', source: 'dependency-audit',
+    summary: `${name}@${version} has an unrecognized license string ("${result.license}") — could not classify it as permissive or restrictive.`,
+    suggestedFix: 'Manually verify the license terms for this dependency.',
+  };
+}
+
+function collectDependencyLicenseIssues(rootPath, deps) {
+  const nodeModules = path.join(rootPath, 'node_modules');
+  const issues = [];
+  for (const name of Object.keys(deps)) {
+    if (issues.length >= MAX_ISSUES) break;
+    // Missing package.json here means hoisted elsewhere, or an uninstalled
+    // optional dep — loadPackageJson returning null covers that and a
+    // parse error identically (both mean "nothing to classify, skip it").
+    const depPkg = loadPackageJson(path.join(nodeModules, name, 'package.json'));
+    if (!depPkg) continue;
+    const result = classify(normalizeLicenseField(depPkg));
+    if (result.status === 'permissive') continue;
+    issues.push(buildLicenseIssue(name, depPkg.version || deps[name], result));
+  }
+  return issues;
+}
+
 // Returns an issues array, or null if licenses can't be checked at all
 // (no package.json, or dependencies aren't installed — nothing under
 // node_modules to read license data from without a network call).
 function checkLicenses(rootPath) {
-  const pkgJsonPath = path.join(rootPath, 'package.json');
-  if (!fs.existsSync(pkgJsonPath)) return null;
-  let pkgJson;
-  try {
-    pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
-  } catch {
-    return null;
-  }
+  const pkgJson = loadPackageJson(path.join(rootPath, 'package.json'));
+  if (!pkgJson) return null;
   const deps = { ...(pkgJson.dependencies || {}), ...(pkgJson.devDependencies || {}) };
-  const names = Object.keys(deps);
-  if (!names.length) return [];
+  if (!Object.keys(deps).length) return [];
 
   const nodeModules = path.join(rootPath, 'node_modules');
   if (!fs.existsSync(nodeModules)) return null;
 
-  const issues = [];
-  for (const name of names) {
-    if (issues.length >= MAX_ISSUES) break;
-    const depPkgPath = path.join(nodeModules, name, 'package.json');
-    if (!fs.existsSync(depPkgPath)) continue; // hoisted elsewhere, or an uninstalled optional dep
-    let depPkg;
-    try {
-      depPkg = JSON.parse(fs.readFileSync(depPkgPath, 'utf8'));
-    } catch {
-      continue;
-    }
-    const result = classify(normalizeLicenseField(depPkg));
-    if (result.status === 'permissive') continue;
-
-    const version = depPkg.version || deps[name];
-    if (result.status === 'missing') {
-      issues.push({
-        file: 'package.json', line: 1, severity: 'Medium', category: 'License Compliance', source: 'dependency-audit',
-        summary: `${name}@${version} has no license field — can't confirm it's safe to use.`,
-        suggestedFix: "Check the package's repository or npm page for its actual license, or replace it with an alternative that declares one.",
-      });
-    } else if (result.status === 'restrictive') {
-      issues.push({
-        file: 'package.json', line: 1, severity: result.severity, category: 'License Compliance', source: 'dependency-audit',
-        summary: `${name}@${version} is licensed under ${result.license}, a copyleft license that may impose obligations on this project.`,
-        suggestedFix: `Confirm ${result.license} is acceptable for this project's distribution model, or replace ${name} with a permissively-licensed alternative.`,
-      });
-    } else {
-      issues.push({
-        file: 'package.json', line: 1, severity: 'Low', category: 'License Compliance', source: 'dependency-audit',
-        summary: `${name}@${version} has an unrecognized license string ("${result.license}") — could not classify it as permissive or restrictive.`,
-        suggestedFix: 'Manually verify the license terms for this dependency.',
-      });
-    }
-  }
-  return issues;
+  return collectDependencyLicenseIssues(rootPath, deps);
 }
 
 module.exports = { checkLicenses, classify, PERMISSIVE, RESTRICTIVE };

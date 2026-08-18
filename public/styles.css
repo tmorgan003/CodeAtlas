@@ -1,3 +1,24 @@
+/* Brand palette migration (PRODUCT.md "Brand Commitments"): the five
+   committed brand hexes — #264653 (dark teal), #2a9d8f (teal), #e9c46a
+   (yellow), #f4a261 (orange), #e76f51 (red-orange) — replace the prior
+   single-hue navy accent. Each hue owns exactly one semantic role rather
+   than being scattered as decoration, chosen along the palette's natural
+   dark-teal -> red-orange ramp so it reinforces the severity/status ramp
+   the product already relies on (calm teal -> caution yellow -> elevated
+   orange -> critical red-orange): dark teal anchors the primary accent
+   (links/buttons/focus), teal is Ok/Done, yellow is Warn/Scanning, orange
+   is the existing "elevated stakes" role (High severity, Production env),
+   and red-orange is Err/Critical/Failed. "Info" (Low severity, Staging,
+   calm status notes) has no brand hex of its own; it's a derived cyan-teal
+   sitting between the accent and Ok hues, staying inside the palette's
+   family rather than reintroducing the old blue. All text/badge pairs
+   below are verified >=4.5:1 (WCAG AA, most with real headroom, not just
+   scraping the floor) via scripted contrast checks against their actual
+   background (panel/canvas in light, panel/bg in dark) — see git history
+   for the derivation. Neutral chrome (bg/panel/border/text/muted) is
+   deliberately untouched: this is an Operate-mode tool where legibility
+   and quiet chrome matter more than immersive brand color (colorize
+   guidance: "rarity gives an accent force"). */
 :root {
   color-scheme: light;
   --bg: #f5f6f8;
@@ -6,21 +27,21 @@
   --border: #dcdfe4;
   --text: #1a1d24;
   --muted: #6b7280;
-  --accent-text: #152547;
-  --accent-surface: #152547;
-  --ok: #147c55;
-  --warn: #936409;
-  --err: #bc3737;
-  --sev-high: #a7530e;
-  --info: #2b6cb0;
+  --accent-text: #38728a;
+  --accent-surface: #3e7e98;
+  --ok: #28776d;
+  --warn: #82692b;
+  --err: #ac5039;
+  --sev-high: #955e32;
+  --info: #2b7582;
   --badge-neutral-bg: #eceef1;
-  --badge-warn-bg: #fdf1da;
-  --badge-ok-bg: #e2f6ec;
-  --badge-err-bg: #fbe4e4;
-  --badge-sev-high-bg: #fdead9;
-  --badge-info-bg: #e3edf8;
-  --badge-accent-bg: #e9edf7;
-  --badge-accent-fg: #152547;
+  --badge-warn-bg: #f4eede;
+  --badge-ok-bg: #d9f2ef;
+  --badge-err-bg: #f7ebe8;
+  --badge-sev-high-bg: #f5ebe2;
+  --badge-info-bg: #def1f4;
+  --badge-accent-bg: #e2eef3;
+  --badge-accent-fg: #38728a;
   --chip-bg: #eef1f7;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -38,21 +59,21 @@
     --border: #2a2e37;
     --text: #e6e8ec;
     --muted: #9aa1ac;
-    --accent-text: #5c83d6;
-    --accent-surface: #3762be;
-    --ok: #37c48f;
-    --warn: #e0a83c;
-    --err: #e16060;
-    --sev-high: #e8863c;
-    --info: #5aa9e6;
+    --accent-text: #4790ae;
+    --accent-surface: #3e7e98;
+    --ok: #329589;
+    --warn: #a48537;
+    --err: #c8705b;
+    --sev-high: #bf7840;
+    --info: #3794a4;
     --badge-neutral-bg: #2a2e37;
-    --badge-warn-bg: #3a3416;
-    --badge-ok-bg: #123a2c;
-    --badge-err-bg: #3a1616;
-    --badge-sev-high-bg: #3a2414;
-    --badge-info-bg: #16324a;
-    --badge-accent-bg: #192a4d;
-    --badge-accent-fg: #6790e9;
+    --badge-warn-bg: #28200d;
+    --badge-ok-bg: #0b2220;
+    --badge-err-bg: #361912;
+    --badge-sev-high-bg: #301e10;
+    --badge-info-bg: #0d2428;
+    --badge-accent-bg: #11232a;
+    --badge-accent-fg: #4790ae;
     --chip-bg: #1c2230;
   }
 }
@@ -65,21 +86,21 @@
   --border: #2a2e37;
   --text: #e6e8ec;
   --muted: #9aa1ac;
-  --accent-text: #5c83d6;
-  --accent-surface: #3762be;
-  --ok: #37c48f;
-  --warn: #e0a83c;
-  --err: #e16060;
-  --sev-high: #e8863c;
-  --info: #5aa9e6;
+  --accent-text: #4595b5;
+  --accent-surface: #317c9b;
+  --ok: #2a9d8f;
+  --warn: #b2861a;
+  --err: #e56343;
+  --sev-high: #e06c10;
+  --info: #3198aa;
   --badge-neutral-bg: #2a2e37;
-  --badge-warn-bg: #3a3416;
-  --badge-ok-bg: #123a2c;
-  --badge-err-bg: #3a1616;
-  --badge-sev-high-bg: #3a2414;
-  --badge-info-bg: #16324a;
-  --badge-accent-bg: #192a4d;
-  --badge-accent-fg: #6790e9;
+  --badge-warn-bg: #2f250c;
+  --badge-ok-bg: #0b2a26;
+  --badge-err-bg: #3f1910;
+  --badge-sev-high-bg: #39210e;
+  --badge-info-bg: #0d292d;
+  --badge-accent-bg: #122730;
+  --badge-accent-fg: #4595b5;
   --chip-bg: #1c2230;
 }
 
@@ -91,21 +112,21 @@
   --border: #dcdfe4;
   --text: #1a1d24;
   --muted: #6b7280;
-  --accent-text: #152547;
-  --accent-surface: #152547;
-  --ok: #147c55;
-  --warn: #936409;
-  --err: #bc3737;
-  --sev-high: #a7530e;
-  --info: #2b6cb0;
+  --accent-text: #38728a;
+  --accent-surface: #3e7e98;
+  --ok: #28776d;
+  --warn: #82692b;
+  --err: #ac5039;
+  --sev-high: #955e32;
+  --info: #2b7582;
   --badge-neutral-bg: #eceef1;
-  --badge-warn-bg: #fdf1da;
-  --badge-ok-bg: #e2f6ec;
-  --badge-err-bg: #fbe4e4;
-  --badge-sev-high-bg: #fdead9;
-  --badge-info-bg: #e3edf8;
-  --badge-accent-bg: #e9edf7;
-  --badge-accent-fg: #152547;
+  --badge-warn-bg: #f4eede;
+  --badge-ok-bg: #d9f2ef;
+  --badge-err-bg: #f7ebe8;
+  --badge-sev-high-bg: #f5ebe2;
+  --badge-info-bg: #def1f4;
+  --badge-accent-bg: #e2eef3;
+  --badge-accent-fg: #38728a;
   --chip-bg: #eef1f7;
 }
 
@@ -132,7 +153,9 @@ header {
   gap: 1rem;
 }
 
-header h1 { margin: 0; font-size: 2.15rem; font-weight: 800; letter-spacing: -0.01em; display: flex; align-items: center; gap: 0.5rem; }
+header h1 { margin: 0; font-size: 2.15rem; font-weight: 800; letter-spacing: -0.01em; }
+header h1 a { display: flex; align-items: center; gap: 0.5rem; color: inherit; text-decoration: none; transition: opacity var(--dur-fast) var(--ease-out); }
+header h1 a:hover { opacity: 0.8; }
 header h1 .brand-accent { color: var(--accent-text); }
 .brand-icon { color: var(--accent-text); flex-shrink: 0; }
 .subtitle { color: var(--muted); margin: 0.25rem 0 0; }
@@ -167,13 +190,54 @@ main {
 
 #list-panel, #detail-panel { grid-column: 2; }
 #form-panel { grid-row: 1 / span 2; }
+#breadcrumb { grid-column: 2; }
+.breadcrumb { margin: 0; font-size: 0.9rem; color: var(--muted); }
+.breadcrumb a { color: var(--accent-text); text-decoration: none; }
+.breadcrumb a:hover { text-decoration: underline; }
+.breadcrumb-sep { margin: 0 0.4rem; }
+#breadcrumb-current { color: var(--text); font-weight: 600; }
+
+/* Views vs. Tools — six identical-weight buttons in one row gave the
+   comparison/export/tag-management actions the same visual priority as the
+   two most-used views, so they competed for attention instead of receding
+   until needed. A label plus a little breathing room between clusters is
+   enough grouping without hiding anything in a menu. */
+.btn-cluster { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.btn-cluster:first-of-type { margin-top: 1rem; }
+.btn-cluster-label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.25rem; }
+
+
+/* App detail page: Path/Repo, Purpose, CI Gate, Notify Webhook, Archive, and
+   Share Link used to sit in one flat list — read-only facts, editable
+   settings, and destructive/exposure actions all at equal visual weight.
+   Splitting into cards groups them by what a visitor is actually there to
+   do (understand the app / change how it scans / take an irreversible or
+   exposure-widening action) instead of by field-declaration order. */
+.detail-card { background: var(--inset); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-top: 1rem; }
+.detail-card h3 { margin: 0 0 0.75rem; font-size: 0.95rem; }
+.detail-card dl { margin: 0; }
+.detail-card-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.detail-card-header h3 { margin: 0 0 0.75rem; }
+#edit-app-form { margin-top: 0.75rem; }
+.detail-card-danger { border-color: var(--err); }
+.detail-card-danger h3 { color: var(--err); }
 #list-panel, #detail-panel { view-transition-name: main-panel; }
 #wiki-view { view-transition-name: wiki-content; }
 
-#form-details summary, #bulk-details summary {
+/* Every collapsible <details><summary> section in the app wraps its
+   heading in <summary> for one clickable row. A bare heading is
+   block-level, so without this it drops to its own line under the
+   disclosure triangle instead of sitting beside it — this rule is
+   deliberately generic (not scoped to one section's id) so it covers
+   every current and future details/summary pair in one place. */
+summary {
   cursor: pointer;
 }
-#form-details summary h2, #bulk-details summary h2 { display: inline; margin: 0; }
+summary h2, summary h3 { display: inline; margin: 0; }
+/* Of the sidebar's four disclosure entries, adding an app is the primary
+   action and the other three (Bulk Import, Manage Owners, Manage Users) are
+   secondary utilities — the accent marks which one to reach for first. */
+#form-details summary { color: var(--accent-text); }
 #form-details form { margin-top: 1rem; }
 #bulk-details { margin-top: 1rem; }
 .bulk-import { margin-top: 1rem; }
@@ -200,7 +264,7 @@ form > button[type="submit"] { margin-top: 0.5rem; }
   gap: 0.75rem;
 }
 
-input, select, textarea {
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   width: 100%;
   margin-top: 0.3rem;
   padding: 0.5rem 0.6rem;
@@ -211,6 +275,14 @@ input, select, textarea {
   font-size: 0.9rem;
   font-family: inherit;
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background-color var(--dur-base) var(--ease-out);
+}
+
+/* Checkboxes stay native-sized — the text-field treatment above (100% width,
+   padding, background box) doesn't apply to them; without this exclusion a
+   bare checkbox stretches to fill its container, blowing a huge gap before
+   its label wherever it isn't wrapped in .checkbox-label. */
+input[type="checkbox"], input[type="radio"] {
+  accent-color: var(--accent-surface);
 }
 
 input:focus, select:focus, textarea:focus {
@@ -229,7 +301,7 @@ input:focus, select:focus, textarea:focus {
   margin-right: -0.4rem;
   transition: background-color var(--dur-base) var(--ease-out);
 }
-.checkbox-label input { width: auto; margin-top: 0.15rem; accent-color: var(--accent-surface); }
+.checkbox-label input { margin-top: 0.15rem; }
 /* Deep scan is a materially different, more consequential choice (external
    LLM call, slower, costs Claude usage) — tint the row so checking it reads
    as a real state change, not just another checkbox. */
@@ -241,6 +313,13 @@ select[name="environment"] { transition: border-color var(--dur-fast) var(--ease
    what you pick here is what you'll see there. */
 select[name="environment"].env-select-production { border-color: var(--sev-high); color: var(--sev-high); }
 select[name="environment"].env-select-staging { border-color: var(--info); color: var(--info); }
+
+/* Same treatment for the Issues table's Triage select — border + text
+   color only, no fill, so "fixed"/"acknowledged" read at a glance instead
+   of requiring the dropdown text to be read row by row. "open" and
+   "false_positive" stay the plain default (see triageSelectClass in app.js). */
+.triage-select-ok { border-color: var(--ok); color: var(--ok); }
+.triage-select-info { border-color: var(--info); color: var(--info); }
 
 .path-input-row {
   display: flex;
@@ -300,32 +379,53 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
    the column. */
 .cell-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
 
-/* Issues Summary column: truncated inline, full text + metadata reachable
-   via the "Show details" toggle instead of a permanently wide column. */
-.cell-category { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
+/* Category used to truncate ("Possible Hi...") and rely on a hover tooltip
+   to read the rest — wrapping in a wider column means the full rule name is
+   always visible without an interaction. */
+.cell-category { white-space: normal; word-break: break-word; }
 .cell-summary { white-space: normal; word-break: break-word; }
 .cell-triage select { width: 100%; }
 .details-toggle { white-space: nowrap; margin-bottom: 0; }
 .issue-detail-row td { background: var(--inset); }
 
 .issues-table th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.issues-table th:nth-child(1), .issues-table td:nth-child(1) { width: 18%; }
-.issues-table th:nth-child(2), .issues-table td:nth-child(2) { width: 10%; }
-.issues-table th:nth-child(3), .issues-table td:nth-child(3) { width: 10%; }
-.issues-table th:nth-child(4), .issues-table td:nth-child(4) { width: 7%; }
-.issues-table th:nth-child(5), .issues-table td:nth-child(5) { width: 37%; }
-.issues-table th:nth-child(6), .issues-table td:nth-child(6) { width: 18%; }
+.issues-table th:nth-child(1), .issues-table td:nth-child(1) { width: 10%; }
+.issues-table th:nth-child(2), .issues-table td:nth-child(2) { width: 20%; }
+.issues-table th:nth-child(3), .issues-table td:nth-child(3) { width: 9%; }
+.issues-table th:nth-child(4), .issues-table td:nth-child(4) { width: 5%; }
+.issues-table th:nth-child(5), .issues-table td:nth-child(5) { width: 36%; }
+.issues-table th:nth-child(6), .issues-table td:nth-child(6) { width: 20%; }
 .cross-issues-table th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cross-issues-table th:nth-child(1), .cross-issues-table td:nth-child(1) { width: 16%; }
-.cross-issues-table th:nth-child(2), .cross-issues-table td:nth-child(2) { width: 11%; }
-.cross-issues-table th:nth-child(3), .cross-issues-table td:nth-child(3) { width: 8%; }
-.cross-issues-table th:nth-child(4), .cross-issues-table td:nth-child(4) { width: 8%; }
-.cross-issues-table th:nth-child(5), .cross-issues-table td:nth-child(5) { width: 6%; }
-.cross-issues-table th:nth-child(6), .cross-issues-table td:nth-child(6) { width: 33%; }
+.cross-issues-table th:nth-child(1), .cross-issues-table td:nth-child(1) { width: 10%; }
+.cross-issues-table th:nth-child(2), .cross-issues-table td:nth-child(2) { width: 10%; }
+.cross-issues-table th:nth-child(3), .cross-issues-table td:nth-child(3) { width: 18%; }
+.cross-issues-table th:nth-child(4), .cross-issues-table td:nth-child(4) { width: 9%; }
+.cross-issues-table th:nth-child(5), .cross-issues-table td:nth-child(5) { width: 5%; }
+.cross-issues-table th:nth-child(6), .cross-issues-table td:nth-child(6) { width: 30%; }
 .cross-issues-table th:nth-child(7), .cross-issues-table td:nth-child(7) { width: 18%; }
 .cross-issues-table td.cell-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Collapsed duplicate-finding group header — same rule, same displayed file
+   name, multiple real occurrences. Slightly tinted so it visually reads as
+   "this row summarizes others below" rather than another ordinary finding. */
+.issue-group-row { background: var(--chip-bg); font-weight: 600; }
+.issue-group-row .cell-category { font-weight: 600; }
+
+/* A left border scan-able down the whole column beats reading the severity
+   pill text on every row — the pill stays as the precise label, the border
+   is the peripheral-vision cue. */
+.issues-table tr[data-severity], .cross-issues-table tr[data-severity] { border-left: 3px solid transparent; }
+.issues-table tr[data-severity="Critical"], .cross-issues-table tr[data-severity="Critical"] { border-left-color: var(--err); }
+.issues-table tr[data-severity="High"], .cross-issues-table tr[data-severity="High"] { border-left-color: var(--sev-high); }
+.issues-table tr[data-severity="Medium"], .cross-issues-table tr[data-severity="Medium"] { border-left-color: var(--warn); }
+.issues-table tr[data-severity="Low"], .cross-issues-table tr[data-severity="Low"] { border-left-color: var(--info); }
+/* The occurrence count is the whole point of this row — it must never be
+   the part that gets clipped by .cell-file's normal ellipsis truncation. */
+.issue-group-row .cell-file { overflow: visible; text-overflow: clip; white-space: normal; }
+.bulk-triage-select { width: 100%; }
 .issue-detail { margin: 0.3rem 0; grid-template-columns: 120px 1fr; }
 .issue-detail dd { white-space: pre-wrap; }
+.issue-code-example { margin: 0; padding: 0.6rem 0.8rem; background: var(--inset); border-radius: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 0.82rem; overflow-x: auto; white-space: pre; }
 .issue-detail dd input { max-width: 320px; margin-top: 0; }
 .tech-app-chip { color: var(--accent-text); cursor: pointer; text-decoration: none; margin-right: 0.3rem; }
 .gate-select { width: auto; display: inline-block; margin-top: 0; }
@@ -348,9 +448,37 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
 
 .scan-queue-note { background: var(--badge-info-bg); color: var(--info); border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.82rem; margin-bottom: 0.75rem; }
 .dashboard-stats { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
-.stat-tile { background: var(--inset); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 1rem; min-width: 100px; }
+.stat-tile { background: var(--inset); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 1rem; min-width: 100px; transition: background-color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out); }
 .stat-tile .stat-value { font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
 .stat-tile .stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+
+/* Stat tiles otherwise carry no urgency signal — "1261 Active Issues" reads
+   the same as "0 Active Issues" until you actually read the number. A tile
+   only tints when what it counts needs attention (see statTile's tone
+   param in app.js), so the untinted default stays the common case.
+   Quieter pass: border stays neutral (a second colored edge on top of a
+   tinted background plus a colored number was three simultaneous signals
+   for one fact) — the tinted background plus the colored value carry it.
+   Label stays the tile's hue at reduced opacity rather than plain gray on
+   a colored surface, just quieter than the value it's labeling. */
+.stat-tile-err { background: var(--badge-err-bg); }
+.stat-tile-err .stat-value { color: var(--err); }
+.stat-tile-err .stat-label { color: var(--err); opacity: 0.7; }
+.stat-tile-sev-high { background: var(--badge-sev-high-bg); }
+.stat-tile-sev-high .stat-value { color: var(--sev-high); }
+.stat-tile-sev-high .stat-label { color: var(--sev-high); opacity: 0.7; }
+.stat-tile-warn { background: var(--badge-warn-bg); }
+.stat-tile-warn .stat-value { color: var(--warn); }
+.stat-tile-warn .stat-label { color: var(--warn); opacity: 0.7; }
+.stat-tile-ok { background: var(--badge-ok-bg); }
+.stat-tile-ok .stat-value { color: var(--ok); }
+.stat-tile-ok .stat-label { color: var(--ok); opacity: 0.7; }
+
+.trend-chart { margin-top: 1rem; }
+.trend-bars { display: flex; align-items: flex-end; gap: 3px; height: 90px; }
+.trend-bar-col { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 0; }
+.trend-bar-stack { width: 100%; display: flex; flex-direction: column-reverse; border-radius: 2px 2px 0 0; overflow: hidden; min-height: 3px; background: var(--inset); }
+.trend-bar-seg { flex-grow: 1; flex-basis: 0; min-height: 1px; }
 .severity-chip-row { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
 .dashboard-subheading { margin: 0.9rem 0 0.4rem; font-size: 0.85rem; color: var(--muted); font-weight: 600; }
 .stale-list { list-style: none; margin: 0; padding: 0; }
@@ -367,6 +495,20 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Delight moment: after "Add an Application" or "Bulk Import" succeeds, the
+   row(s) that just came into existence get a slow accent-tinted fade —
+   long enough (1.4s, well past row-enter's own 220ms) to read as "this is
+   the thing you just created," not another notification. Answers "did it
+   work, and where did it go" in one visual instead of a status line the
+   user has to notice and a table they then have to search. */
+#app-table tbody tr.row-just-added { animation: rowJustAdded 1400ms var(--ease-out); }
+
+@keyframes rowJustAdded {
+  0% { background-color: var(--badge-accent-bg); }
+  70% { background-color: var(--badge-accent-bg); }
+  100% { background-color: transparent; }
+}
+
 .empty-state { color: var(--muted); font-size: 0.9rem; }
 
 .filter-bar {
@@ -375,7 +517,7 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
   margin-bottom: 1rem;
   flex-wrap: wrap;
 }
-.filter-bar input, .filter-bar select {
+.filter-bar input:not([type="checkbox"]), .filter-bar select {
   margin-top: 0;
   width: auto;
   min-width: 140px;
@@ -460,6 +602,7 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: u
 }
 
 dl { display: grid; grid-template-columns: 140px 1fr; gap: 0.4rem 1rem; font-size: 0.9rem; }
+dl[hidden] { display: none; }
 dt { color: var(--muted); }
 dd { margin: 0; word-break: break-word; }
 
@@ -474,6 +617,12 @@ dd { margin: 0; word-break: break-word; }
 #wiki-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1.1rem; }
 .wiki-nav-group { display: flex; flex-wrap: wrap; }
 #wiki-links button { margin: 0 0.35rem 0.35rem 0; font-size: 0.8rem; padding: 0.3rem 0.6rem; }
+/* The one wayfinding cue for which of these tabs you're currently on — a
+   filled surface, not just an outline, so it reads as "selected" the way a
+   real tab bar does rather than as one more bordered button among many. */
+#wiki-links button.wiki-nav-active { border-color: var(--accent-surface); background: var(--accent-surface); color: #fff; }
+#wiki-links .wiki-nav-more { margin: 0 0.35rem 0.35rem 0; }
+#wiki-links .wiki-nav-more select { margin-top: 0; width: auto; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 
 .wiki-search-form { display: flex; gap: 0.4rem; margin-top: 0.5rem; max-width: 360px; }
 .wiki-search-form input { margin-top: 0; }
@@ -518,6 +667,10 @@ dd { margin: 0; word-break: break-word; }
 .custom-section-textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; margin-bottom: 0.5rem; resize: vertical; }
 .onboarding-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
 .onboarding-checklist .checkbox-label { margin-top: 0; }
+.onboarding-item { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+.onboarding-item:last-child { border-bottom: none; }
+.onboarding-why { margin: 0.2rem 0 0 1.6rem; color: var(--muted); font-size: 0.82rem; }
+.onboarding-cta { margin: 0.3rem 0 0 1.6rem; font-size: 0.82rem; }
 .wiki-edit-toolbar { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
 .wiki-override-banner { width: 100%; margin: 0; color: var(--muted); font-size: 0.82rem; }
 .wiki-view code { background: var(--inset); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.85em; }
@@ -536,7 +689,7 @@ dd { margin: 0; word-break: break-word; }
 .tracker-push-status { font-size: 0.8rem; color: var(--muted); }
 .tracker-push-status.error { color: var(--err); }
 #tracker-details { margin-top: 1rem; }
-#tracker-details summary h3 { display: inline; margin: 0; font-size: 1rem; }
+#tracker-details summary h3 { font-size: 1rem; }
 #tracker-details form { margin-top: 0.75rem; }
 .diff-picker-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
 .diff-picker-row label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--muted); margin-bottom: 0; }

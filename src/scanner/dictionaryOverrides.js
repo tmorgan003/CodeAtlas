@@ -4,8 +4,8 @@
 // per app, keyed by model name + field name — independent of deep-scan
 // enrichment, and takes priority over it when both exist for the same field.
 
-const fs = require('fs');
 const path = require('path');
+const jsonFileStore = require('../jsonFileStore');
 
 const OVERRIDES_DIR = path.join(__dirname, '..', '..', 'data', 'dictionary-overrides');
 
@@ -14,18 +14,11 @@ function overridesFile(appId) {
 }
 
 function loadOverrides(appId) {
-  const file = overridesFile(appId);
-  if (!fs.existsSync(file)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return {};
-  }
+  return jsonFileStore.load(overridesFile(appId), {});
 }
 
 function saveOverrides(appId, map) {
-  fs.mkdirSync(OVERRIDES_DIR, { recursive: true });
-  fs.writeFileSync(overridesFile(appId), JSON.stringify(map, null, 2), 'utf8');
+  jsonFileStore.save(overridesFile(appId), map);
 }
 
 function setOverride(appId, modelName, fieldName, description) {

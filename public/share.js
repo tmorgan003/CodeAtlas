@@ -69,57 +69,88 @@ function inlineFormat(text, baseDir) {
   return out;
 }
 
-function renderMarkdown(md, baseDir) {
-  const lines = md.split('\n');
-  const html = [];
-  let inTable = false;
-  let inCode = false;
-  let listOpen = false;
-  const closeList = () => { if (listOpen) { html.push('</ul>'); listOpen = false; } };
+// ---- renderMarkdown line handlers ----
+// Split out of renderMarkdown (was one function with cyclomatic complexity
+// 16 — every line type's detection logic in one if/else-if chain). Each
+// tryX below inspects one line, mutates the shared `state`, and returns
+// true if it consumed the line (equivalent to the original's `continue`).
+// Order matters and mirrors the original exactly, including the two
+// state-transitions that aren't tied to a "did we handle it" return value:
+// tryTableRow closes a still-open table on the first non-table line, and
+// closeMarkdownList runs for every line that reaches past the list check.
 
-  for (const raw of lines) {
-    const line = raw.replace(/\r$/, '');
-    if (line.startsWith('```')) {
-      inCode = !inCode;
-      html.push(inCode ? '<pre><code>' : '</code></pre>');
-      continue;
-    }
-    if (inCode) { html.push(escapeHtml(line)); continue; }
+function closeMarkdownList(state) {
+  if (state.listOpen) { state.html.push('</ul>'); state.listOpen = false; }
+}
 
-    if (/^\s*\|.*\|\s*$/.test(line)) {
-      const cells = line.trim().slice(1, -1).split('|').map((c) => c.trim());
-      if (cells.every((c) => /^-+$/.test(c))) continue;
-      if (!inTable) { html.push('<div class="table-scroll">', '<table>'); inTable = true; }
-      const tag = html[html.length - 1] === '<table>' ? 'th' : 'td';
-      html.push('<tr>' + cells.map((c) => `<${tag}>${inlineFormat(c, baseDir)}</${tag}>`).join('') + '</tr>');
-      continue;
-    } else if (inTable) {
-      html.push('</table>', '</div>');
-      inTable = false;
-    }
+function tryCodeFence(line, state) {
+  if (!line.startsWith('```')) return false;
+  state.inCode = !state.inCode;
+  state.html.push(state.inCode ? '<pre><code>' : '</code></pre>');
+  return true;
+}
 
-    const h = line.match(/^(#{1,3})\s+(.*)$/);
-    if (h) {
-      closeList();
-      const level = h[1].length;
-      html.push(`<h${level}>${inlineFormat(h[2], baseDir)}</h${level}>`);
-      continue;
-    }
+function tryCodeLine(line, state) {
+  if (!state.inCode) return false;
+  state.html.push(escapeHtml(line));
+  return true;
+}
 
-    if (/^-\s+/.test(line)) {
-      if (!listOpen) { html.push('<ul>'); listOpen = true; }
-      html.push(`<li>${inlineFormat(line.replace(/^-\s+/, ''), baseDir)}</li>`);
-      continue;
-    }
-    closeList();
-
-    if (line.trim() === '---') { html.push('<hr>'); continue; }
-    if (line.trim() === '') { html.push(''); continue; }
-    html.push(`<p>${inlineFormat(line, baseDir)}</p>`);
+function tryTableRow(line, state, baseDir) {
+  if (!/^\s*\|.*\|\s*$/.test(line)) {
+    if (state.inTable) { state.html.push('</table>', '</div>'); state.inTable = false; }
+    return false;
   }
-  closeList();
-  if (inTable) html.push('</table>', '</div>');
-  return html.join('\n');
+  const cells = line.trim().slice(1, -1).split('|').map((c) => c.trim());
+  if (cells.every((c) => /^-+$/.test(c))) return true; // separator row
+  if (!state.inTable) { state.html.push('<div class="table-scroll">', '<table>'); state.inTable = true; }
+  const tag = state.html[state.html.length - 1] === '<table>' ? 'th' : 'td';
+  state.html.push('<tr>' + cells.map((c) => `<${tag}>${inlineFormat(c, baseDir)}</${tag}>`).join('') + '</tr>');
+  return true;
+}
+
+function tryHeading(line, state, baseDir) {
+  const h = line.match(/^(#{1,3})\s+(.*)$/);
+  if (!h) return false;
+  closeMarkdownList(state);
+  const level = h[1].length;
+  state.html.push(`<h${level}>${inlineFormat(h[2], baseDir)}</h${level}>`);
+  return true;
+}
+
+function tryListItem(line, state, baseDir) {
+  if (!/^-\s+/.test(line)) return false;
+  if (!state.listOpen) { state.html.push('<ul>'); state.listOpen = true; }
+  state.html.push(`<li>${inlineFormat(line.replace(/^-\s+/, ''), baseDir)}</li>`);
+  return true;
+}
+
+function tryHrOrBlank(line, state) {
+  if (line.trim() === '---') { state.html.push('<hr>'); return true; }
+  if (line.trim() === '') { state.html.push(''); return true; }
+  return false;
+}
+
+function renderMarkdown(md, baseDir) {
+  const state = { inTable: false, inCode: false, listOpen: false, html: [] };
+
+  for (const raw of md.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+
+    if (tryCodeFence(line, state)) continue;
+    if (tryCodeLine(line, state)) continue;
+    if (tryTableRow(line, state, baseDir)) continue;
+    if (tryHeading(line, state, baseDir)) continue;
+    if (tryListItem(line, state, baseDir)) continue;
+    closeMarkdownList(state);
+
+    if (tryHrOrBlank(line, state)) continue;
+
+    state.html.push(`<p>${inlineFormat(line, baseDir)}</p>`);
+  }
+  closeMarkdownList(state);
+  if (state.inTable) state.html.push('</table>', '</div>');
+  return state.html.join('\n');
 }
 
 let currentWikiDir = '';

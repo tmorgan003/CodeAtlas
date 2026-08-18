@@ -5,8 +5,8 @@
 // rescan) so a custom page survives rescans automatically — there's
 // nothing for the scanner to clobber, because it never writes here.
 
-const fs = require('fs');
 const path = require('path');
+const jsonFileStore = require('../jsonFileStore');
 
 const SECTIONS_DIR = path.join(__dirname, '..', '..', 'data', 'custom-wiki-sections');
 
@@ -14,24 +14,12 @@ function filePath(appId) {
   return path.join(SECTIONS_DIR, `${appId}.json`);
 }
 
-function ensure() {
-  fs.mkdirSync(SECTIONS_DIR, { recursive: true });
-}
-
 function loadSections(appId) {
-  ensure();
-  const p = filePath(appId);
-  if (!fs.existsSync(p)) return [];
-  try {
-    return JSON.parse(fs.readFileSync(p, 'utf8'));
-  } catch {
-    return [];
-  }
+  return jsonFileStore.load(filePath(appId), []);
 }
 
 function saveSections(appId, sections) {
-  ensure();
-  fs.writeFileSync(filePath(appId), JSON.stringify(sections, null, 2), 'utf8');
+  jsonFileStore.save(filePath(appId), sections);
 }
 
 function slugify(title) {

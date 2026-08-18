@@ -2,14 +2,24 @@ const form = document.getElementById('app-form');
 const formStatus = document.getElementById('form-status');
 const tableBody = document.getElementById('app-table-body');
 const emptyState = document.getElementById('empty-state');
+const brandHomeLink = document.getElementById('brand-home-link');
+const dashboardPanel = document.getElementById('dashboard-panel');
+const breadcrumbEl = document.getElementById('breadcrumb');
+const breadcrumbHome = document.getElementById('breadcrumb-home');
+const breadcrumbCurrent = document.getElementById('breadcrumb-current');
 const listPanel = document.getElementById('list-panel');
 const detailPanel = document.getElementById('detail-panel');
 const detailName = document.getElementById('detail-name');
-const detailMeta = document.getElementById('detail-meta');
+const detailMetaOverview = document.getElementById('detail-meta-overview');
+const detailMetaSettings = document.getElementById('detail-meta-settings');
+const detailMetaDanger = document.getElementById('detail-meta-danger');
+const editAppBtn = document.getElementById('edit-app-btn');
+const editAppForm = document.getElementById('edit-app-form');
+const editAppCancelBtn = document.getElementById('edit-app-cancel-btn');
+const editAppStatus = document.getElementById('edit-app-status');
 const wikiNav = document.getElementById('wiki-nav');
 const wikiLinks = document.getElementById('wiki-links');
 const wikiView = document.getElementById('wiki-view');
-const closeDetailBtn = document.getElementById('close-detail');
 const wikiSearchForm = document.getElementById('wiki-search-form');
 const wikiSearchInput = document.getElementById('wiki-search-input');
 const themeToggleBtn = document.getElementById('theme-toggle');
@@ -214,7 +224,11 @@ function renderAuthWidget() {
   authWidget.innerHTML = '';
   if (currentUser.username) {
     const label = document.createElement('span');
-    label.innerHTML = `${currentUser.username} <span class="auth-role">(${currentUser.role})</span>`;
+    label.append(document.createTextNode(currentUser.username + ' '));
+    const roleSpan = document.createElement('span');
+    roleSpan.className = 'auth-role';
+    roleSpan.textContent = `(${currentUser.role})`;
+    label.appendChild(roleSpan);
     const logoutBtn = document.createElement('button');
     logoutBtn.type = 'button';
     logoutBtn.className = 'secondary';
@@ -505,7 +519,17 @@ const filterShowArchived = document.getElementById('filter-show-archived');
 function populateFilterOptions(apps) {
   const rebuild = (select, values, allLabel) => {
     const current = select.value;
-    select.innerHTML = `<option value="">${allLabel}</option>` + values.map((v) => `<option value="${v}">${v}</option>`).join('');
+    select.innerHTML = '';
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = allLabel;
+    select.appendChild(allOpt);
+    for (const v of values) {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      select.appendChild(opt);
+    }
     if (values.includes(current)) select.value = current;
   };
   rebuild(filterEnvironment, [...new Set(apps.map((a) => a.environment).filter(Boolean))].sort(), 'All environments');
@@ -575,9 +599,14 @@ async function refreshList() {
 const dashboardContent = document.getElementById('dashboard-content');
 const SEVERITY_ORDER = ['Critical', 'High', 'Medium', 'Low'];
 
-function statTile(value, label) {
+// tone (optional): 'err' | 'sev-high' | 'warn' — lets a stat carry the same
+// urgency signal its number represents instead of sitting in the same
+// neutral tile as a plain count. Data-driven (see loadDashboard's tone
+// calls below), not decorative — a tile only tints when what it's counting
+// actually needs attention.
+function statTile(value, label, tone) {
   const div = document.createElement('div');
-  div.className = 'stat-tile';
+  div.className = 'stat-tile' + (tone ? ` stat-tile-${tone}` : '');
   const val = document.createElement('div');
   val.className = 'stat-value';
   val.textContent = value;
@@ -588,34 +617,92 @@ function statTile(value, label) {
   return div;
 }
 
-async function loadDashboard() {
-  let d;
-  try {
-    d = await api('/dashboard');
-  } catch {
-    return;
-  }
-  dashboardContent.innerHTML = '';
+const TREND_SEVERITY_VAR = { Critical: '--err', High: '--sev-high', Medium: '--warn', Low: '--info' };
 
-  // Feature 20: scan queue visibility — only shown while something's
-  // actually running/waiting, so it doesn't clutter the dashboard at rest.
-  const q = await fetch('/api/apps/scan-queue').then((r) => r.json()).catch(() => null);
-  if (q && (q.active > 0 || q.queued.length > 0)) {
-    const queueNote = document.createElement('p');
-    queueNote.className = 'scan-queue-note';
-    const parts = [`${q.active}/${q.maxConcurrent} scan slot(s) active`];
-    if (q.queued.length) parts.push(`${q.queued.length} queued: ${q.queued.map((a) => `${a.name} (#${a.position})`).join(', ')}`);
-    queueNote.textContent = parts.join(' — ');
-    dashboardContent.appendChild(queueNote);
-  }
+// Plain CSS stacked bars, not a charting library — 14 data points doesn't
+// need one, and this stays inside the "no new dependency" pattern the rest
+// of this codebase already follows (npmAudit/OSV shell out to existing
+// tools; nothing here pulls in a new npm package for a single view).
+function buildTrendChart(points) {
+  const wrap = document.createElement('div');
+  wrap.className = 'trend-chart';
+  const heading = document.createElement('p');
+  heading.className = 'dashboard-subheading';
+  heading.textContent = 'Open issues by severity, last 14 days:';
+  wrap.appendChild(heading);
 
+  const maxTotal = Math.max(1, ...points.map((p) => p.total));
+  const bars = document.createElement('div');
+  bars.className = 'trend-bars';
+  for (const point of points) {
+    const barCol = document.createElement('div');
+    barCol.className = 'trend-bar-col';
+    barCol.title = `${point.date}: ${point.total} open (Critical ${point.bySeverity.Critical}, High ${point.bySeverity.High}, Medium ${point.bySeverity.Medium}, Low ${point.bySeverity.Low})`;
+    const stack = document.createElement('div');
+    stack.className = 'trend-bar-stack';
+    stack.style.height = `${Math.round((point.total / maxTotal) * 100)}%`;
+    for (const sev of ['Low', 'Medium', 'High', 'Critical']) {
+      const count = point.bySeverity[sev];
+      if (!count) continue;
+      const seg = document.createElement('div');
+      seg.className = 'trend-bar-seg';
+      seg.style.flexGrow = String(count);
+      seg.style.background = `var(${TREND_SEVERITY_VAR[sev]})`;
+      stack.appendChild(seg);
+    }
+    barCol.appendChild(stack);
+    bars.appendChild(barCol);
+  }
+  wrap.appendChild(bars);
+  return wrap;
+}
+
+// The 3s poll (see setInterval below) calls refreshList -> loadDashboard on
+// every tick regardless of whether anything actually changed, and this
+// function used to unconditionally tear down and rebuild dashboardContent
+// from scratch every time — visibly flickering/"refreshing" the whole
+// Portfolio Overview panel every few seconds even when nothing was
+// different. Cache a signature of the last-rendered data and skip the
+// rebuild when it's unchanged.
+let lastDashboardSignature = null;
+
+// ---- loadDashboard section renderers ----
+// Split out of loadDashboard (was one function with cyclomatic complexity
+// 29 — every dashboard section's branches summed together). Each renderer
+// owns one section and appends directly to dashboardContent.
+
+function computeIssuesTone(d) {
+  return d.bySeverity.Critical > 0 ? 'err'
+    : d.bySeverity.High > 0 ? 'sev-high'
+    : d.totalActiveIssues > 0 ? 'warn'
+    : null;
+}
+
+// Feature 20: scan queue visibility — only shown while something's actually
+// running/waiting, so it doesn't clutter the dashboard at rest.
+function renderScanQueueNote(q) {
+  if (!(q && (q.active > 0 || q.queued.length > 0))) return;
+  const queueNote = document.createElement('p');
+  queueNote.className = 'scan-queue-note';
+  const parts = [`${q.active}/${q.maxConcurrent} scan slot(s) active`];
+  if (q.queued.length) parts.push(`${q.queued.length} queued: ${q.queued.map((a) => `${a.name} (#${a.position})`).join(', ')}`);
+  queueNote.textContent = parts.join(' — ');
+  dashboardContent.appendChild(queueNote);
+}
+
+function renderStatsTiles(d, trend) {
   const stats = document.createElement('div');
   stats.className = 'dashboard-stats';
   stats.appendChild(statTile(d.totalApps, 'Apps'));
-  stats.appendChild(statTile(d.totalActiveIssues, 'Active Issues'));
-  stats.appendChild(statTile(d.staleApps.length, `Stale (>${d.staleDaysThreshold}d)`));
+  const issuesTone = computeIssuesTone(d);
+  stats.appendChild(statTile(d.totalActiveIssues, 'Active Issues', issuesTone));
+  stats.appendChild(statTile(d.staleApps.length, `Stale (>${d.staleDaysThreshold}d)`, d.staleApps.length > 0 ? 'warn' : null));
+  if (trend) stats.appendChild(statTile(trend.resolvedThisWeek, 'Resolved This Week', trend.resolvedThisWeek > 0 ? 'ok' : null));
   dashboardContent.appendChild(stats);
+  return issuesTone;
+}
 
+function renderSeverityChipRow(d) {
   const severityRow = document.createElement('div');
   severityRow.className = 'severity-chip-row';
   for (const sev of SEVERITY_ORDER) {
@@ -627,7 +714,9 @@ async function loadDashboard() {
     severityRow.appendChild(chip);
   }
   if (severityRow.children.length) dashboardContent.appendChild(severityRow);
+}
 
+function renderEnvironmentChipRow(d) {
   const envRow = document.createElement('div');
   envRow.className = 'severity-chip-row';
   for (const [env, count] of Object.entries(d.byEnvironment)) {
@@ -637,58 +726,101 @@ async function loadDashboard() {
     envRow.appendChild(chip);
   }
   if (envRow.children.length) dashboardContent.appendChild(envRow);
+}
 
-  if (d.staleApps.length) {
-    const staleHeading = document.createElement('p');
-    staleHeading.className = 'dashboard-subheading';
-    staleHeading.textContent = 'Needs a rescan:';
-    dashboardContent.appendChild(staleHeading);
+function renderStaleAppsList(d) {
+  if (!d.staleApps.length) return;
+  const staleHeading = document.createElement('p');
+  staleHeading.className = 'dashboard-subheading';
+  staleHeading.textContent = 'Needs a rescan:';
+  dashboardContent.appendChild(staleHeading);
 
-    const list = document.createElement('ul');
-    list.className = 'stale-list';
-    for (const s of d.staleApps) {
-      const li = document.createElement('li');
-      li.className = 'stale-item';
-      const link = document.createElement('a');
-      link.href = '#';
-      link.textContent = s.name;
-      link.style.color = 'var(--accent-text)';
-      link.addEventListener('click', (e) => { e.preventDefault(); openDetail(s.id); });
-      const age = document.createElement('span');
-      age.className = 'stale-age';
-      age.textContent = s.daysSinceScan === null ? 'never scanned' : `${s.daysSinceScan}d ago`;
-      li.append(link, age);
-      list.appendChild(li);
-    }
-    dashboardContent.appendChild(list);
+  const list = document.createElement('ul');
+  list.className = 'stale-list';
+  for (const s of d.staleApps) {
+    const li = document.createElement('li');
+    li.className = 'stale-item';
+    const link = document.createElement('a');
+    link.href = '#';
+    link.textContent = s.name;
+    link.style.color = 'var(--accent-text)';
+    link.addEventListener('click', (e) => { e.preventDefault(); openDetail(s.id); });
+    const age = document.createElement('span');
+    age.className = 'stale-age';
+    age.textContent = s.daysSinceScan === null ? 'never scanned' : `${s.daysSinceScan}d ago`;
+    li.append(link, age);
+    list.appendChild(li);
+  }
+  dashboardContent.appendChild(list);
+}
+
+// Feature 14: flag apps whose latest scan ran meaningfully longer than the
+// portfolio average (see the /dashboard route for the threshold logic).
+function renderSlowAppsList(d) {
+  if (!d.slowApps.length) return;
+  const slowHeading = document.createElement('p');
+  slowHeading.className = 'dashboard-subheading';
+  slowHeading.textContent = `Slow scans (portfolio average: ${formatDuration(d.avgDurationMs)}):`;
+  dashboardContent.appendChild(slowHeading);
+
+  const list = document.createElement('ul');
+  list.className = 'stale-list';
+  for (const s of d.slowApps) {
+    const li = document.createElement('li');
+    li.className = 'stale-item';
+    const link = document.createElement('a');
+    link.href = '#';
+    link.textContent = s.name;
+    link.style.color = 'var(--accent-text)';
+    link.addEventListener('click', (e) => { e.preventDefault(); openDetail(s.id); });
+    const dur = document.createElement('span');
+    dur.className = 'stale-age';
+    dur.textContent = `${formatDuration(s.durationMs)} — ${s.filesProcessed} file(s)`;
+    li.append(link, dur);
+    list.appendChild(li);
+  }
+  dashboardContent.appendChild(list);
+}
+
+async function loadDashboard() {
+  let d;
+  try {
+    d = await api('/dashboard');
+  } catch {
+    return;
   }
 
-  // Feature 14: flag apps whose latest scan ran meaningfully longer than the
-  // portfolio average (see the /dashboard route for the threshold logic).
-  if (d.slowApps.length) {
-    const slowHeading = document.createElement('p');
-    slowHeading.className = 'dashboard-subheading';
-    slowHeading.textContent = `Slow scans (portfolio average: ${formatDuration(d.avgDurationMs)}):`;
-    dashboardContent.appendChild(slowHeading);
+  const q = await fetch('/api/apps/scan-queue').then((r) => r.json()).catch(() => null);
 
-    const list = document.createElement('ul');
-    list.className = 'stale-list';
-    for (const s of d.slowApps) {
-      const li = document.createElement('li');
-      li.className = 'stale-item';
-      const link = document.createElement('a');
-      link.href = '#';
-      link.textContent = s.name;
-      link.style.color = 'var(--accent-text)';
-      link.addEventListener('click', (e) => { e.preventDefault(); openDetail(s.id); });
-      const dur = document.createElement('span');
-      dur.className = 'stale-age';
-      dur.textContent = `${formatDuration(s.durationMs)} — ${s.filesProcessed} file(s)`;
-      li.append(link, dur);
-      list.appendChild(li);
-    }
-    dashboardContent.appendChild(list);
-  }
+  // Trend visibility: replays scan history against today's triage state to
+  // show whether the portfolio is improving or drifting, not just its
+  // current snapshot.
+  const trend = await fetch('/api/apps/dashboard/trend').then((r) => r.json()).catch(() => null);
+
+  const signature = JSON.stringify({ d, q, trend });
+  if (signature === lastDashboardSignature) return;
+  lastDashboardSignature = signature;
+
+  dashboardContent.innerHTML = '';
+
+  renderScanQueueNote(q);
+  const issuesTone = renderStatsTiles(d, trend);
+
+  // Surface the same severity signal on the nav entry point itself — the
+  // stat tile above only exists once you're already on the dashboard, but
+  // "how urgent is this" is exactly what should be visible on the button
+  // that gets you to the issues list in the first place.
+  allIssuesBadge.hidden = d.totalActiveIssues === 0;
+  allIssuesBadge.textContent = String(d.totalActiveIssues);
+  allIssuesBadge.className = 'severity-badge ' + (ISSUES_BADGE_TONE_CLASS[issuesTone] || 'severity-low');
+
+  renderSeverityChipRow(d);
+  renderEnvironmentChipRow(d);
+
+  if (trend && trend.points.some((p) => p.total > 0)) dashboardContent.appendChild(buildTrendChart(trend.points));
+
+  renderStaleAppsList(d);
+  renderSlowAppsList(d);
 }
 
 async function triggerScan(id) {
@@ -770,19 +902,34 @@ function updateEnvironmentSuggestions(apps) {
   environmentOptions.innerHTML = all.map((v) => `<option value="${v}"></option>`).join('');
 }
 
+// Briefly highlights and scrolls a just-created row into view — the
+// visible link between "I submitted a form" and "CodeAtlas is now tracking
+// this app," which a flat status line alone doesn't show (see row-just-added
+// in styles.css for why this is a longer, deliberate fade, not a flash).
+function markRowJustAdded(id, shouldScroll = true) {
+  const refs = rowElements.get(id);
+  if (!refs) return;
+  if (shouldScroll) refs.tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  refs.tr.classList.remove('row-just-added');
+  void refs.tr.offsetWidth; // restart if the same row was just highlighted
+  refs.tr.classList.add('row-just-added');
+  refs.tr.addEventListener('animationend', () => refs.tr.classList.remove('row-just-added'), { once: true });
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   formStatus.classList.remove('success', 'error');
   formStatus.textContent = 'Adding...';
   const data = Object.fromEntries(new FormData(form).entries());
   try {
-    await api('', { method: 'POST', body: JSON.stringify(data) });
+    const entry = await api('', { method: 'POST', body: JSON.stringify(data) });
     form.reset();
     updateEnvSelectColor();
     deepScanEstimate.textContent = '';
-    formStatus.textContent = 'Added.';
+    formStatus.textContent = `Added "${entry.name}" — tracked below.`;
     formStatus.classList.add('success');
     await refreshList();
+    markRowJustAdded(entry.id);
     setTimeout(() => { formStatus.textContent = ''; formStatus.classList.remove('success'); }, 2000);
   } catch (err) {
     formStatus.textContent = 'Error: ' + err.message;
@@ -790,11 +937,56 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
+// ---- Edit an existing application's fields ----
+// Reuses the same field set as "Add an Application" (name, pathOrRepo,
+// purpose, owner, environment, techStack, tags, notes, scanMode) — those
+// were previously only settable at creation time.
+
+editAppBtn.addEventListener('click', () => {
+  const app = currentDetailApp;
+  if (!app) return;
+  editAppForm.elements.name.value = app.name || '';
+  editAppForm.elements.pathOrRepo.value = app.pathOrRepo || '';
+  editAppForm.elements.purpose.value = app.purpose || '';
+  editAppForm.elements.owner.value = app.owner || '';
+  editAppForm.elements.environment.value = app.environment || '';
+  editAppForm.elements.techStack.value = app.techStack || '';
+  editAppForm.elements.tags.value = (app.tags || []).join(', ');
+  editAppForm.elements.notes.value = app.notes || '';
+  editAppForm.elements.scanMode.checked = app.scanMode === 'deep';
+  editAppStatus.textContent = '';
+  detailMetaOverview.hidden = true;
+  editAppForm.hidden = false;
+});
+
+editAppCancelBtn.addEventListener('click', () => {
+  editAppForm.hidden = true;
+  detailMetaOverview.hidden = false;
+});
+
+editAppForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!currentDetailId) return;
+  editAppStatus.classList.remove('success', 'error');
+  editAppStatus.textContent = 'Saving...';
+  const data = Object.fromEntries(new FormData(editAppForm).entries());
+  data.scanMode = editAppForm.elements.scanMode.checked ? 'deep' : 'static'; // unchecked checkboxes are omitted by FormData
+  try {
+    await api(`/${currentDetailId}`, { method: 'PATCH', body: JSON.stringify(data) });
+    editAppStatus.textContent = 'Saved.';
+    editAppStatus.classList.add('success');
+    await openDetail(currentDetailId);
+    await refreshList();
+  } catch (err) {
+    editAppStatus.textContent = 'Error: ' + err.message;
+    editAppStatus.classList.add('error');
+  }
+});
+
 // ---- Compare two apps ----
 
 const compareAppsBtn = document.getElementById('compare-apps-btn');
 const comparePanel = document.getElementById('compare-panel');
-const closeCompareBtn = document.getElementById('close-compare');
 const compareContent = document.getElementById('compare-content');
 const compareAppA = document.getElementById('compare-app-a');
 const compareAppB = document.getElementById('compare-app-b');
@@ -814,6 +1006,53 @@ function compareRow(label, valA, valB, differs) {
   return tr;
 }
 
+function buildCompareTableHead(a, b) {
+  const head = document.createElement('tr');
+  const headA = document.createElement('th');
+  headA.textContent = a.name;
+  const headB = document.createElement('th');
+  headB.textContent = b.name;
+  head.append(document.createElement('th'), headA, headB);
+  return head;
+}
+
+function buildCompareStatRows(a, b) {
+  const sA = a.stats || {}, sB = b.stats || {};
+  return [
+    compareRow('Units', sA.units ?? '—', sB.units ?? '—', sA.units !== sB.units),
+    compareRow('Models', sA.models ?? '—', sB.models ?? '—', sA.models !== sB.models),
+    compareRow('Routes', sA.routes ?? '—', sB.routes ?? '—', sA.routes !== sB.routes),
+    compareRow('Active Issues', sA.issues ?? '—', sB.issues ?? '—', sA.issues !== sB.issues),
+  ];
+}
+
+function buildCompareSeverityRows(a, b) {
+  return SEVERITY_ORDER.map((sev) => compareRow(`  ${sev}`, a.bySeverity[sev], b.bySeverity[sev], a.bySeverity[sev] !== b.bySeverity[sev]));
+}
+
+function buildCompareTable(a, b) {
+  const table = document.createElement('table');
+  table.appendChild(buildCompareTableHead(a, b));
+  table.appendChild(compareRow('Environment', a.environment || '—', b.environment || '—', a.environment !== b.environment));
+  table.appendChild(compareRow('Owner / Team', a.owner || '—', b.owner || '—', a.owner !== b.owner));
+  table.appendChild(compareRow('Status', a.status, b.status, a.status !== b.status));
+  table.appendChild(compareRow('Last Scanned', a.scannedAt ? new Date(a.scannedAt).toLocaleString() : '—', b.scannedAt ? new Date(b.scannedAt).toLocaleString() : '—', false));
+  for (const row of buildCompareStatRows(a, b)) table.appendChild(row);
+  for (const row of buildCompareSeverityRows(a, b)) table.appendChild(row);
+  table.appendChild(compareRow('Tech Stack', a.tech.join(', ') || '—', b.tech.join(', ') || '—', false));
+  return table;
+}
+
+function buildCompareSharedTechNote(a, b) {
+  const sharedTech = a.tech.filter((t) => b.tech.includes(t));
+  if (!sharedTech.length) return null;
+  const note = document.createElement('p');
+  note.style.color = 'var(--muted)';
+  note.style.fontSize = '0.82rem';
+  note.textContent = `Shared: ${sharedTech.join(', ')}. Highlighted rows above differ between the two apps.`;
+  return note;
+}
+
 async function runCompare() {
   const idA = compareAppA.value;
   const idB = compareAppB.value;
@@ -824,36 +1063,14 @@ async function runCompare() {
   compareContent.innerHTML = '<p>Loading…</p>';
   try {
     const { a, b } = await fetch(`/api/apps/compare?a=${idA}&b=${idB}`).then((r) => r.json());
-    const table = document.createElement('table');
-    const head = document.createElement('tr');
-    head.innerHTML = `<th></th><th>${a.name}</th><th>${b.name}</th>`;
-    table.appendChild(head);
-    table.appendChild(compareRow('Environment', a.environment || '—', b.environment || '—', a.environment !== b.environment));
-    table.appendChild(compareRow('Owner / Team', a.owner || '—', b.owner || '—', a.owner !== b.owner));
-    table.appendChild(compareRow('Status', a.status, b.status, a.status !== b.status));
-    table.appendChild(compareRow('Last Scanned', a.scannedAt ? new Date(a.scannedAt).toLocaleString() : '—', b.scannedAt ? new Date(b.scannedAt).toLocaleString() : '—', false));
-    const sA = a.stats || {}, sB = b.stats || {};
-    table.appendChild(compareRow('Units', sA.units ?? '—', sB.units ?? '—', sA.units !== sB.units));
-    table.appendChild(compareRow('Models', sA.models ?? '—', sB.models ?? '—', sA.models !== sB.models));
-    table.appendChild(compareRow('Routes', sA.routes ?? '—', sB.routes ?? '—', sA.routes !== sB.routes));
-    table.appendChild(compareRow('Active Issues', sA.issues ?? '—', sB.issues ?? '—', sA.issues !== sB.issues));
-    for (const sev of SEVERITY_ORDER) {
-      table.appendChild(compareRow(`  ${sev}`, a.bySeverity[sev], b.bySeverity[sev], a.bySeverity[sev] !== b.bySeverity[sev]));
-    }
-    const sharedTech = a.tech.filter((t) => b.tech.includes(t));
-    table.appendChild(compareRow('Tech Stack', a.tech.join(', ') || '—', b.tech.join(', ') || '—', false));
+    const table = buildCompareTable(a, b);
+    const note = buildCompareSharedTechNote(a, b);
 
     const scroll = document.createElement('div');
     scroll.className = 'table-scroll';
     scroll.appendChild(table);
     compareContent.innerHTML = '';
-    if (sharedTech.length) {
-      const note = document.createElement('p');
-      note.style.color = 'var(--muted)';
-      note.style.fontSize = '0.82rem';
-      note.textContent = `Shared: ${sharedTech.join(', ')}. Highlighted rows above differ between the two apps.`;
-      compareContent.appendChild(note);
-    }
+    if (note) compareContent.appendChild(note);
     compareContent.appendChild(scroll);
   } catch (err) {
     compareContent.textContent = 'Could not compare: ' + err.message;
@@ -865,9 +1082,7 @@ async function runCompare() {
 // instead of picking both from scratch in the dropdowns. Reuses the same
 // generic two-app compare view/API; only the entry point differs.
 function openCompareWith(idA, idB) {
-  listPanel.hidden = true;
-  detailPanel.hidden = true;
-  comparePanel.hidden = false;
+  showOnly(comparePanel);
   const options = allApps.map((a) => `<option value="${a.id}">${a.name} (${a.environment || 'no env'})</option>`).join('');
   compareAppA.innerHTML = options;
   compareAppB.innerHTML = options;
@@ -880,10 +1095,6 @@ function openCompareWith(idA, idB) {
 
 compareAppsBtn.addEventListener('click', () => openCompareWith(null, null));
 
-closeCompareBtn.addEventListener('click', () => {
-  comparePanel.hidden = true;
-  listPanel.hidden = false;
-});
 
 compareRunBtn.addEventListener('click', runCompare);
 
@@ -914,7 +1125,6 @@ portfolioExportBtn.addEventListener('click', async () => {
 
 const techStackBtn = document.getElementById('tech-stack-btn');
 const techStackPanel = document.getElementById('tech-stack-panel');
-const closeTechStackBtn = document.getElementById('close-tech-stack');
 const techStackContent = document.getElementById('tech-stack-content');
 
 function techChip(app) {
@@ -924,7 +1134,6 @@ function techChip(app) {
   chip.textContent = app.name;
   chip.addEventListener('click', (e) => {
     e.preventDefault();
-    techStackPanel.hidden = true;
     openDetail(app.id);
   });
   return chip;
@@ -981,23 +1190,16 @@ async function loadTechStack() {
 }
 
 techStackBtn.addEventListener('click', async () => {
-  listPanel.hidden = true;
-  detailPanel.hidden = true;
-  techStackPanel.hidden = false;
+  showOnly(techStackPanel);
   techStackContent.innerHTML = '<p>Loading…</p>';
   await loadTechStack();
 });
 
-closeTechStackBtn.addEventListener('click', () => {
-  techStackPanel.hidden = true;
-  listPanel.hidden = false;
-});
 
 // ---- Manage tags (Feature 19) ----
 
 const manageTagsBtn = document.getElementById('manage-tags-btn');
 const tagsPanel = document.getElementById('tags-panel');
-const closeTagsBtn = document.getElementById('close-tags');
 const tagsTable = document.getElementById('tags-table');
 const tagsMergeTarget = document.getElementById('tags-merge-target');
 const tagsMergeBtn = document.getElementById('tags-merge-btn');
@@ -1077,18 +1279,12 @@ async function loadTagsPanel() {
 }
 
 manageTagsBtn.addEventListener('click', () => {
-  listPanel.hidden = true;
-  detailPanel.hidden = true;
-  tagsPanel.hidden = false;
+  showOnly(tagsPanel);
   tagsStatus.textContent = '';
   tagsStatus.classList.remove('success', 'error');
   loadTagsPanel();
 });
 
-closeTagsBtn.addEventListener('click', () => {
-  tagsPanel.hidden = true;
-  listPanel.hidden = false;
-});
 
 tagsMergeBtn.addEventListener('click', async () => {
   const target = tagsMergeTarget.value.trim();
@@ -1122,7 +1318,6 @@ tagsMergeBtn.addEventListener('click', async () => {
 
 const scanCalendarBtn = document.getElementById('scan-calendar-btn');
 const scanCalendarPanel = document.getElementById('scan-calendar-panel');
-const closeScanCalendarBtn = document.getElementById('close-scan-calendar');
 const scanCalendarContent = document.getElementById('scan-calendar-content');
 
 // Feature 14: scan performance metrics — shared duration formatter used by
@@ -1155,7 +1350,6 @@ function scanCalendarRow(entry) {
   link.style.color = 'var(--accent-text)';
   link.addEventListener('click', (e) => {
     e.preventDefault();
-    scanCalendarPanel.hidden = true;
     openDetail(entry.id);
   });
   const when = document.createElement('span');
@@ -1216,27 +1410,58 @@ async function loadScanCalendar() {
 }
 
 scanCalendarBtn.addEventListener('click', async () => {
-  listPanel.hidden = true;
-  detailPanel.hidden = true;
-  scanCalendarPanel.hidden = false;
+  showOnly(scanCalendarPanel);
   await loadScanCalendar();
 });
 
-closeScanCalendarBtn.addEventListener('click', () => {
-  scanCalendarPanel.hidden = true;
-  listPanel.hidden = false;
-});
 
 // ---- Cross-app issue view ----
 
 const allIssuesBtn = document.getElementById('all-issues-btn');
+const allIssuesBadge = document.getElementById('all-issues-badge');
+const ISSUES_BADGE_TONE_CLASS = { err: 'severity-critical', 'sev-high': 'severity-high', warn: 'severity-medium' };
 const crossIssuesPanel = document.getElementById('cross-issues-panel');
-const closeCrossIssuesBtn = document.getElementById('close-cross-issues');
 const crossIssuesContent = document.getElementById('cross-issues-content');
 const crossIssuesSearch = document.getElementById('cross-issues-search');
 const crossIssuesSeverity = document.getElementById('cross-issues-severity');
 const crossIssuesApp = document.getElementById('cross-issues-app');
 const crossIssuesSource = document.getElementById('cross-issues-source');
+
+// Every top-level view (the app list, an app's detail page, and each of the
+// five dashboard-button destinations) is mutually exclusive — exactly one
+// should ever be visible. Routing every switch through here (instead of each
+// call site hand-toggling .hidden on just the two panels it knows about)
+// guarantees that invariant — e.g. jumping from "All Issues" straight into
+// an app's detail view no longer leaves both panels visible — and scrolls
+// the new view into place, since the dashboard's nav buttons sit well above
+// where their target panel renders and gave no feedback that anything had
+// happened without it.
+const ALL_PANELS = [listPanel, detailPanel, comparePanel, techStackPanel, tagsPanel, scanCalendarPanel, crossIssuesPanel];
+
+// Static label for every subpage except the detail view, whose breadcrumb
+// text is the app's name and gets set separately in openDetail() once it's
+// known.
+const PANEL_BREADCRUMB_LABEL = new Map([
+  [comparePanel, 'Compare Apps'],
+  [techStackPanel, 'Tech Stack'],
+  [tagsPanel, 'Manage Tags'],
+  [scanCalendarPanel, 'Scan Calendar'],
+  [crossIssuesPanel, 'All Issues'],
+]);
+
+function showOnly(panel) {
+  for (const p of ALL_PANELS) p.hidden = (p !== panel);
+  // The full Portfolio Overview (stat tiles, severity badges, the six
+  // action buttons) only makes sense on the list/home view — repeating it
+  // at the top of every subpage meant scrolling past the same block twice
+  // to reach the content you actually came for. Everywhere else gets a
+  // one-line breadcrumb instead.
+  const isHome = panel === listPanel;
+  dashboardPanel.hidden = !isHome;
+  breadcrumbEl.hidden = isHome;
+  if (!isHome && panel !== detailPanel) breadcrumbCurrent.textContent = PANEL_BREADCRUMB_LABEL.get(panel) || '';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 let allCrossIssues = [];
 
@@ -1257,6 +1482,299 @@ function applyCrossIssuesFilters() {
   renderCrossIssuesTable(filtered);
 }
 
+const CROSS_ISSUE_SUMMARY_TRUNCATE_AT = 65;
+
+// ---- Claude Code fix-prompt generation ----
+// Builds a ready-to-paste prompt describing one issue (or, for a group, all
+// grouped issues) with enough context — file, line, category, summary,
+// suggested fix, and CWE/before-after example where the scanner has them —
+// that pasting it straight into Claude Code is enough to act on.
+
+function buildIssueFixPrompt(issue) {
+  const lines = [
+    'Fix this issue found by CodeAtlas static analysis:',
+    '',
+    `File: ${issue.file}`,
+    `Line: ${issue.line}`,
+    `Category: ${issue.category} (${issue.severity} severity)`,
+    `Summary: ${issue.summary}`,
+  ];
+  if (issue.suggestedFix) lines.push(`Suggested fix: ${issue.suggestedFix}`);
+  if (issue.cwe) lines.push(`CWE / OWASP: ${issue.cwe}`);
+  if (issue.codeExample) {
+    lines.push('', 'Example of the vulnerable pattern:', '```', issue.codeExample.before, '```');
+    lines.push('Example of the fixed pattern:', '```', issue.codeExample.after, '```');
+  }
+  lines.push('', `Open ${issue.file} around line ${issue.line}, understand the surrounding code, and apply a fix for this specific issue without changing unrelated behavior.`);
+  return lines.join('\n');
+}
+
+function buildIssueGroupFixPrompt(group) {
+  const lines = [`Fix these ${group.length} related issues found by CodeAtlas static analysis (same category, same file):`, ''];
+  group.forEach((issue, i) => {
+    lines.push(`${i + 1}. ${issue.file}:${issue.line} — ${issue.summary}`);
+    if (issue.suggestedFix) lines.push(`   Suggested fix: ${issue.suggestedFix}`);
+  });
+  const cwes = [...new Set(group.map((i) => i.cwe).filter(Boolean))];
+  if (cwes.length) lines.push('', `CWE / OWASP: ${cwes.join('; ')}`);
+  lines.push('', 'Address each of these individually, applying the appropriate fix at each location without changing unrelated behavior.');
+  return lines.join('\n');
+}
+
+async function copyPromptToClipboard(text, btn) {
+  const original = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied!';
+  } catch {
+    btn.textContent = 'Copy failed';
+  }
+  setTimeout(() => { btn.textContent = original; }, 1500);
+}
+
+function buildCopyPromptButton(label, promptText) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'link-button';
+  btn.textContent = label;
+  btn.addEventListener('click', () => copyPromptToClipboard(promptText, btn));
+  return btn;
+}
+
+function buildCrossIssueRow(issue, table) {
+  const tr = document.createElement('tr');
+  tr.dataset.severity = issue.severity;
+
+  const severityTd = document.createElement('td');
+  const severityBadge = document.createElement('span');
+  severityBadge.className = 'severity-badge ' + (SEVERITY_BADGE_CLASS[issue.severity] || 'severity-low');
+  severityBadge.textContent = issue.severity;
+  severityTd.appendChild(severityBadge);
+  tr.appendChild(severityTd);
+
+  const appTd = document.createElement('td');
+  appTd.className = 'cell-category';
+  const appLink = document.createElement('a');
+  appLink.href = '#';
+  appLink.style.color = 'var(--accent-text)';
+  appLink.textContent = issue.appName;
+  appLink.title = issue.appName;
+  appLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    openDetail(issue.appId).then(() => loadIssuesInteractive(issue.appId));
+  });
+  appTd.appendChild(appLink);
+  tr.appendChild(appTd);
+
+  const categoryTd = document.createElement('td');
+  categoryTd.className = 'cell-category';
+  categoryTd.textContent = issue.category;
+  tr.appendChild(categoryTd);
+
+  const fileTd = document.createElement('td');
+  fileTd.className = 'cell-file';
+  fileTd.textContent = issue.file.split('/').pop();
+  fileTd.title = issue.file;
+  tr.appendChild(fileTd);
+
+  const lineTd = document.createElement('td');
+  lineTd.textContent = String(issue.line);
+  tr.appendChild(lineTd);
+
+  const summaryTd = document.createElement('td');
+  summaryTd.className = 'cell-summary';
+  const isLong = issue.summary.length > CROSS_ISSUE_SUMMARY_TRUNCATE_AT;
+  const summarySpan = document.createElement('span');
+  summarySpan.textContent = isLong ? issue.summary.slice(0, CROSS_ISSUE_SUMMARY_TRUNCATE_AT - 1).trimEnd() + '…' : issue.summary;
+  summaryTd.appendChild(summarySpan);
+  summaryTd.title = issue.summary;
+  summaryTd.appendChild(document.createTextNode(' '));
+  const detailsBtn = document.createElement('button');
+  detailsBtn.type = 'button';
+  detailsBtn.className = 'link-button details-toggle';
+  detailsBtn.textContent = 'Show details';
+  summaryTd.appendChild(detailsBtn);
+  tr.appendChild(summaryTd);
+
+  const triageTd = document.createElement('td');
+  const select = document.createElement('select');
+  select.className = triageSelectClass(issue.triage.state);
+  for (const s of TRIAGE_STATES) {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    if (s === issue.triage.state) opt.selected = true;
+    select.appendChild(opt);
+  }
+  select.addEventListener('change', async () => {
+    await fetch(`/api/apps/${issue.appId}/issues/triage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprint: issue.fingerprint, state: select.value }),
+    });
+    await loadAllIssues();
+  });
+  triageTd.appendChild(select);
+  tr.appendChild(triageTd);
+
+  table.appendChild(tr);
+
+  const detailTr = document.createElement('tr');
+  detailTr.className = 'issue-detail-row';
+  detailTr.hidden = true;
+  const detailTd = document.createElement('td');
+  detailTd.colSpan = 7;
+  const dl = document.createElement('dl');
+  dl.className = 'issue-detail';
+  const addEntry = (term, value) => {
+    const dt = document.createElement('dt');
+    dt.textContent = term;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    dl.append(dt, dd);
+  };
+  const addCodeEntry = (term, code) => {
+    const dt = document.createElement('dt');
+    dt.textContent = term;
+    const dd = document.createElement('dd');
+    const pre = document.createElement('pre');
+    pre.className = 'issue-code-example';
+    pre.textContent = code;
+    dd.appendChild(pre);
+    dl.append(dt, dd);
+  };
+  addEntry('File', issue.file);
+  addEntry('Summary', issue.summary);
+  if (issue.suggestedFix) addEntry('Suggested Fix', issue.suggestedFix);
+  if (issue.cwe) addEntry('CWE / OWASP', issue.cwe);
+  if (issue.proposedFix) {
+    addCodeEntry('Proposed Fix (Deep Scan)', issue.proposedFix.diff);
+    if (issue.proposedFix.explanation) addEntry('Why this fix', issue.proposedFix.explanation);
+  } else if (issue.codeExample) {
+    addCodeEntry('Before', issue.codeExample.before);
+    addCodeEntry('After', issue.codeExample.after);
+  }
+  const fixDt = document.createElement('dt');
+  fixDt.textContent = 'Fix';
+  const fixDd = document.createElement('dd');
+  fixDd.appendChild(buildCopyPromptButton('Copy Claude Code Prompt', buildIssueFixPrompt(issue)));
+  dl.append(fixDt, fixDd);
+  detailTd.appendChild(dl);
+  detailTr.appendChild(detailTd);
+  table.appendChild(detailTr);
+
+  detailsBtn.addEventListener('click', () => {
+    detailTr.hidden = !detailTr.hidden;
+    detailsBtn.textContent = detailTr.hidden ? 'Show details' : 'Hide details';
+  });
+}
+
+// Scoped to a single app (unlike groupIssuesForDisplay's per-app-page use) —
+// grouping across apps too would collapse "route.ts is dead code in App A"
+// and "route.ts is dead code in App B" into one misleading row implying a
+// single shared cause, when they're two unrelated findings that happen to
+// share a rule and a basename.
+function groupCrossIssuesForDisplay(issues) {
+  const groups = new Map();
+  for (const issue of issues) {
+    const key = issue.appId + '|' + issue.category + '|' + issue.file.split('/').pop();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(issue);
+  }
+  return [...groups.values()];
+}
+
+function buildCrossIssueGroupRow(group, table, groupId) {
+  const worst = group.reduce((a, b) => (SEVERITY_RANK[b.severity] < SEVERITY_RANK[a.severity] ? b : a));
+  const basename = group[0].file.split('/').pop();
+
+  const groupTr = document.createElement('tr');
+  groupTr.className = 'issue-group-row';
+  groupTr.dataset.severity = worst.severity;
+
+  const sevTd = document.createElement('td');
+  const sevBadge = document.createElement('span');
+  sevBadge.className = 'severity-badge ' + (SEVERITY_BADGE_CLASS[worst.severity] || 'severity-low');
+  sevBadge.textContent = worst.severity;
+  sevTd.appendChild(sevBadge);
+  groupTr.appendChild(sevTd);
+
+  const appTd = document.createElement('td');
+  appTd.className = 'cell-category';
+  appTd.textContent = group[0].appName;
+  groupTr.appendChild(appTd);
+
+  const catTd = document.createElement('td');
+  catTd.className = 'cell-category';
+  catTd.textContent = group[0].category;
+  groupTr.appendChild(catTd);
+
+  const fileTd = document.createElement('td');
+  fileTd.className = 'cell-file';
+  fileTd.textContent = `${basename} (×${group.length})`;
+  groupTr.appendChild(fileTd);
+
+  groupTr.appendChild(document.createElement('td')); // Line varies per occurrence
+
+  const summaryTd = document.createElement('td');
+  summaryTd.className = 'cell-summary';
+  const groupToggle = document.createElement('button');
+  groupToggle.type = 'button';
+  groupToggle.className = 'link-button details-toggle';
+  groupToggle.textContent = `Show ${group.length} occurrences`;
+  summaryTd.appendChild(groupToggle);
+  summaryTd.appendChild(document.createTextNode(' '));
+  summaryTd.appendChild(buildCopyPromptButton('Copy Fix Prompt (All)', buildIssueGroupFixPrompt(group)));
+  groupTr.appendChild(summaryTd);
+
+  const bulkTriageTd = document.createElement('td');
+  const bulkSelect = document.createElement('select');
+  bulkSelect.className = 'bulk-triage-select';
+  const bulkPlaceholder = document.createElement('option');
+  bulkPlaceholder.value = '';
+  bulkPlaceholder.textContent = `Set all ${group.length} to…`;
+  bulkSelect.appendChild(bulkPlaceholder);
+  for (const s of TRIAGE_STATES) {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    bulkSelect.appendChild(opt);
+  }
+  bulkSelect.addEventListener('change', async () => {
+    const state = bulkSelect.value;
+    if (!state) return;
+    await fetch(`/api/apps/${group[0].appId}/issues/triage-bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprints: group.map((i) => i.fingerprint), state }),
+    });
+    await loadAllIssues();
+  });
+  bulkTriageTd.appendChild(bulkSelect);
+  groupTr.appendChild(bulkTriageTd);
+  table.appendChild(groupTr);
+
+  const memberRows = [];
+  for (const issue of group) {
+    const before = table.rows.length;
+    buildCrossIssueRow(issue, table);
+    for (let i = before; i < table.rows.length; i++) {
+      const row = table.rows[i];
+      row.hidden = true;
+      row.dataset.issueGroup = groupId;
+      memberRows.push(row);
+    }
+  }
+  groupToggle.addEventListener('click', () => {
+    const expand = memberRows[0].hidden;
+    for (const row of memberRows) {
+      if (row.classList.contains('issue-detail-row')) continue;
+      row.hidden = !expand;
+    }
+    groupToggle.textContent = expand ? `Hide ${group.length} occurrences` : `Show ${group.length} occurrences`;
+  });
+}
+
 function renderCrossIssuesTable(issues) {
   crossIssuesContent.innerHTML = '';
   if (!issues.length) {
@@ -1266,77 +1784,13 @@ function renderCrossIssuesTable(issues) {
   const table = document.createElement('table');
   table.className = 'cross-issues-table fit-container';
   table.innerHTML = '<tr><th>Severity</th><th>App</th><th>Category</th><th>File</th><th>Line</th><th>Summary</th><th>Triage</th></tr>';
-  const SUMMARY_TRUNCATE_AT = 65;
-  for (const issue of issues) {
-    const tr = document.createElement('tr');
 
-    const severityTd = document.createElement('td');
-    const severityBadge = document.createElement('span');
-    severityBadge.className = 'severity-badge ' + (SEVERITY_BADGE_CLASS[issue.severity] || 'severity-low');
-    severityBadge.textContent = issue.severity;
-    severityTd.appendChild(severityBadge);
-    tr.appendChild(severityTd);
-
-    const appTd = document.createElement('td');
-    appTd.className = 'cell-category';
-    const appLink = document.createElement('a');
-    appLink.href = '#';
-    appLink.style.color = 'var(--accent-text)';
-    appLink.textContent = issue.appName;
-    appLink.title = issue.appName;
-    appLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      crossIssuesPanel.hidden = true;
-      openDetail(issue.appId).then(() => loadIssuesInteractive(issue.appId));
-    });
-    appTd.appendChild(appLink);
-    tr.appendChild(appTd);
-
-    const categoryTd = document.createElement('td');
-    categoryTd.className = 'cell-category';
-    categoryTd.textContent = issue.category;
-    categoryTd.title = issue.category;
-    tr.appendChild(categoryTd);
-
-    const fileTd = document.createElement('td');
-    fileTd.className = 'cell-file';
-    fileTd.textContent = issue.file.split('/').pop();
-    fileTd.title = issue.file;
-    tr.appendChild(fileTd);
-
-    const lineTd = document.createElement('td');
-    lineTd.textContent = String(issue.line);
-    tr.appendChild(lineTd);
-
-    const summaryTd = document.createElement('td');
-    summaryTd.className = 'cell-summary';
-    const isLong = issue.summary.length > SUMMARY_TRUNCATE_AT;
-    summaryTd.textContent = isLong ? issue.summary.slice(0, SUMMARY_TRUNCATE_AT - 1).trimEnd() + '…' : issue.summary;
-    summaryTd.title = issue.summary;
-    tr.appendChild(summaryTd);
-
-    const triageTd = document.createElement('td');
-    const select = document.createElement('select');
-    for (const s of TRIAGE_STATES) {
-      const opt = document.createElement('option');
-      opt.value = s;
-      opt.textContent = s;
-      if (s === issue.triage.state) opt.selected = true;
-      select.appendChild(opt);
-    }
-    select.addEventListener('change', async () => {
-      await fetch(`/api/apps/${issue.appId}/issues/triage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fingerprint: issue.fingerprint, state: select.value }),
-      });
-      await loadAllIssues();
-    });
-    triageTd.appendChild(select);
-    tr.appendChild(triageTd);
-
-    table.appendChild(tr);
+  let groupSeq = 0;
+  for (const group of groupCrossIssuesForDisplay(issues)) {
+    if (group.length === 1) buildCrossIssueRow(group[0], table);
+    else buildCrossIssueGroupRow(group, table, `cross-issue-group-${groupSeq++}`);
   }
+
   const scroll = document.createElement('div');
   scroll.className = 'table-scroll';
   scroll.appendChild(table);
@@ -1353,17 +1807,11 @@ async function loadAllIssues() {
 }
 
 allIssuesBtn.addEventListener('click', async () => {
-  listPanel.hidden = true;
-  detailPanel.hidden = true;
-  crossIssuesPanel.hidden = false;
+  showOnly(crossIssuesPanel);
   crossIssuesContent.innerHTML = '<p>Loading…</p>';
   await loadAllIssues();
 });
 
-closeCrossIssuesBtn.addEventListener('click', () => {
-  crossIssuesPanel.hidden = true;
-  listPanel.hidden = false;
-});
 
 [crossIssuesSearch, crossIssuesSeverity, crossIssuesApp, crossIssuesSource].forEach((el) => el.addEventListener('input', applyCrossIssuesFilters));
 
@@ -1393,6 +1841,10 @@ bulkSubmitBtn.addEventListener('click', async () => {
     bulkStatus.classList.add(body.errors.length ? 'error' : 'success');
     if (body.created.length) bulkTextarea.value = '';
     await refreshList();
+    // Same "here's what you just created" moment as the single-app form,
+    // extended to every row a bulk import produced (scrolling to the first
+    // one — jumping to each in turn would fight the user for the scrollbar).
+    body.created.forEach((entry, i) => markRowJustAdded(entry.id, i === 0));
   } catch (err) {
     bulkStatus.textContent = 'Error: ' + err.message;
     bulkStatus.classList.add('error');
@@ -1464,40 +1916,41 @@ loadOwners();
 
 const ignorePatternsTable = document.getElementById('ignore-patterns-table');
 const ignorePatternNewInput = document.getElementById('ignore-pattern-new-input');
+const ignorePatternNewReason = document.getElementById('ignore-pattern-new-reason');
+const ignorePatternNewExpires = document.getElementById('ignore-pattern-new-expires');
 const ignorePatternAddBtn = document.getElementById('ignore-pattern-add-btn');
 const ignorePatternStatus = document.getElementById('ignore-pattern-status');
 
 function renderIgnorePatterns(appId, patterns) {
-  ignorePatternsTable.innerHTML = '<tr><th>Pattern</th><th></th></tr>';
-  for (const pattern of patterns) {
+  ignorePatternsTable.innerHTML = '<tr><th>Pattern</th><th>Reason</th><th>Expires</th><th>By</th><th></th></tr>';
+  for (const entry of patterns) {
     const tr = document.createElement('tr');
     const patternTd = document.createElement('td');
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = pattern;
-    input.addEventListener('blur', async () => {
-      const newPattern = input.value.trim();
-      if (!newPattern || newPattern === pattern) { input.value = pattern; return; }
-      const updated = await fetch(`/api/apps/${appId}/ignore-patterns`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPattern: pattern, newPattern }),
-      }).then((r) => r.json());
-      renderIgnorePatterns(appId, updated);
-    });
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
-    patternTd.appendChild(input);
+    const code = document.createElement('code');
+    code.textContent = entry.pattern;
+    patternTd.appendChild(code);
+    const reasonTd = document.createElement('td');
+    reasonTd.textContent = entry.reason || '—';
+    reasonTd.style.color = 'var(--muted)';
+    const expiresTd = document.createElement('td');
+    const expired = entry.expiresAt && new Date(entry.expiresAt).getTime() < Date.now();
+    expiresTd.textContent = entry.expiresAt ? new Date(entry.expiresAt).toLocaleDateString() : '—';
+    if (expired) { expiresTd.style.color = 'var(--err)'; expiresTd.title = 'Expired — no longer skipping this pattern.'; }
+    const byTd = document.createElement('td');
+    byTd.textContent = entry.createdBy || 'unknown';
+    byTd.style.color = 'var(--muted)';
     const actionTd = document.createElement('td');
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'secondary';
     removeBtn.textContent = 'Remove';
     removeBtn.addEventListener('click', async () => {
-      const updated = await fetch(`/api/apps/${appId}/ignore-patterns/${encodeURIComponent(pattern)}`, { method: 'DELETE' }).then((r) => r.json());
+      const updated = await fetch(`/api/apps/${appId}/ignore-patterns/${entry.id}`, { method: 'DELETE' }).then((r) => r.json());
       renderIgnorePatterns(appId, updated);
+      loadSuppressionAuditLog(appId);
     });
     actionTd.appendChild(removeBtn);
-    tr.append(patternTd, actionTd);
+    tr.append(patternTd, reasonTd, expiresTd, byTd, actionTd);
     ignorePatternsTable.appendChild(tr);
   }
 }
@@ -1510,19 +1963,24 @@ async function loadIgnorePatterns(appId) {
 ignorePatternAddBtn.addEventListener('click', async () => {
   if (!currentDetailId) return;
   const pattern = ignorePatternNewInput.value.trim();
+  const reason = ignorePatternNewReason.value.trim();
+  const expiresAt = ignorePatternNewExpires.value;
   if (!pattern) return;
   ignorePatternStatus.classList.remove('success', 'error');
   try {
     const updated = await fetch(`/api/apps/${currentDetailId}/ignore-patterns`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pattern }),
+      body: JSON.stringify({ pattern, reason, expiresAt }),
     }).then((r) => {
       if (!r.ok) return r.json().then((b) => { throw new Error(b.error || `Request failed (${r.status})`); });
       return r.json();
     });
     renderIgnorePatterns(currentDetailId, updated);
+    loadSuppressionAuditLog(currentDetailId);
     ignorePatternNewInput.value = '';
+    ignorePatternNewReason.value = '';
+    ignorePatternNewExpires.value = '';
     ignorePatternStatus.textContent = `Added "${pattern}". Takes effect on the next scan.`;
     ignorePatternStatus.classList.add('success');
     setTimeout(() => { ignorePatternStatus.textContent = ''; ignorePatternStatus.classList.remove('success'); }, 3000);
@@ -1649,12 +2107,13 @@ maskRuleNewPattern.addEventListener('keydown', (e) => { if (e.key === 'Enter') {
 const suppressionRulesTable = document.getElementById('suppression-rules-table');
 const suppressionRuleNewCategory = document.getElementById('suppression-rule-new-category');
 const suppressionRuleNewPattern = document.getElementById('suppression-rule-new-pattern');
-const suppressionRuleNewNote = document.getElementById('suppression-rule-new-note');
+const suppressionRuleNewReason = document.getElementById('suppression-rule-new-reason');
+const suppressionRuleNewExpires = document.getElementById('suppression-rule-new-expires');
 const suppressionRuleAddBtn = document.getElementById('suppression-rule-add-btn');
 const suppressionRuleStatus = document.getElementById('suppression-rule-status');
 
 function renderSuppressionRules(appId, rules) {
-  suppressionRulesTable.innerHTML = '<tr><th>Category</th><th>File Pattern</th><th>Note</th><th></th></tr>';
+  suppressionRulesTable.innerHTML = '<tr><th>Category</th><th>File Pattern</th><th>Reason</th><th>Expires</th><th>By</th><th></th></tr>';
   for (const rule of rules) {
     const tr = document.createElement('tr');
     const catTd = document.createElement('td');
@@ -1663,9 +2122,16 @@ function renderSuppressionRules(appId, rules) {
     const code = document.createElement('code');
     code.textContent = rule.filePattern;
     patternTd.appendChild(code);
-    const noteTd = document.createElement('td');
-    noteTd.textContent = rule.note || '—';
-    noteTd.style.color = 'var(--muted)';
+    const reasonTd = document.createElement('td');
+    reasonTd.textContent = rule.reason || '—';
+    reasonTd.style.color = 'var(--muted)';
+    const expiresTd = document.createElement('td');
+    const expired = rule.expiresAt && new Date(rule.expiresAt).getTime() < Date.now();
+    expiresTd.textContent = rule.expiresAt ? new Date(rule.expiresAt).toLocaleDateString() : '—';
+    if (expired) { expiresTd.style.color = 'var(--err)'; expiresTd.title = 'Expired — no longer suppressing matches.'; }
+    const byTd = document.createElement('td');
+    byTd.textContent = rule.createdBy || 'unknown';
+    byTd.style.color = 'var(--muted)';
     const actionTd = document.createElement('td');
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
@@ -1674,9 +2140,10 @@ function renderSuppressionRules(appId, rules) {
     removeBtn.addEventListener('click', async () => {
       const updated = await fetch(`/api/apps/${appId}/suppression-rules/${rule.id}`, { method: 'DELETE' }).then((r) => r.json());
       renderSuppressionRules(appId, updated);
+      loadSuppressionAuditLog(appId);
     });
     actionTd.appendChild(removeBtn);
-    tr.append(catTd, patternTd, noteTd, actionTd);
+    tr.append(catTd, patternTd, reasonTd, expiresTd, byTd, actionTd);
     suppressionRulesTable.appendChild(tr);
   }
 }
@@ -1686,25 +2153,64 @@ async function loadSuppressionRules(appId) {
   renderSuppressionRules(appId, rules);
 }
 
+const suppressionAuditLogTable = document.getElementById('suppression-audit-log-table');
+
+async function loadSuppressionAuditLog(appId) {
+  if (!suppressionAuditLogTable) return;
+  const log = await fetch('/api/apps/suppression-audit-log').then((r) => r.json()).catch(() => []);
+  const forApp = log.filter((entry) => entry.appId === appId);
+  suppressionAuditLogTable.innerHTML = '<tr><th>When</th><th>Who</th><th>Action</th><th>Kind</th><th>Pattern</th><th>Reason</th></tr>';
+  if (!forApp.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    td.className = 'empty-state';
+    td.textContent = 'No suppression activity recorded for this app yet.';
+    tr.appendChild(td);
+    suppressionAuditLogTable.appendChild(tr);
+    return;
+  }
+  for (const entry of forApp) {
+    const tr = document.createElement('tr');
+    const cells = [
+      new Date(entry.at).toLocaleString(),
+      entry.by || 'unknown',
+      entry.action,
+      entry.kind === 'ignore-pattern' ? 'Ignore Pattern' : 'Suppression Rule',
+      entry.filePattern || '—',
+      entry.reason || '—',
+    ];
+    for (const value of cells) {
+      const td = document.createElement('td');
+      td.textContent = value;
+      tr.appendChild(td);
+    }
+    suppressionAuditLogTable.appendChild(tr);
+  }
+}
+
 suppressionRuleAddBtn.addEventListener('click', async () => {
   if (!currentDetailId) return;
   const category = suppressionRuleNewCategory.value.trim();
   const filePattern = suppressionRuleNewPattern.value.trim();
-  const note = suppressionRuleNewNote.value.trim();
+  const reason = suppressionRuleNewReason.value.trim();
+  const expiresAt = suppressionRuleNewExpires.value;
   if (!filePattern) return;
   suppressionRuleStatus.classList.remove('success', 'error');
   try {
     const res = await fetch(`/api/apps/${currentDetailId}/suppression-rules`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category, filePattern, note }),
+      body: JSON.stringify({ category, filePattern, reason, expiresAt }),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
     await loadSuppressionRules(currentDetailId);
+    loadSuppressionAuditLog(currentDetailId);
     suppressionRuleNewCategory.value = '';
     suppressionRuleNewPattern.value = '';
-    suppressionRuleNewNote.value = '';
+    suppressionRuleNewReason.value = '';
+    suppressionRuleNewExpires.value = '';
     suppressionRuleStatus.textContent = 'Added — matches hide immediately in Issues below; overall counts update on the next scan.';
     suppressionRuleStatus.classList.add('success');
     setTimeout(() => { suppressionRuleStatus.textContent = ''; suppressionRuleStatus.classList.remove('success'); }, 4000);
@@ -1720,34 +2226,82 @@ suppressionRuleNewPattern.addEventListener('keydown', (e) => { if (e.key === 'En
 const onboardingChecklistEl = document.getElementById('onboarding-checklist');
 const onboardingSummaryBadge = document.getElementById('onboarding-summary-badge');
 
+// Where each checklist item's "take me there" link should land — reused
+// across renders rather than rebuilt per item, since the destinations are
+// fixed regardless of which app is open.
+const ONBOARDING_JUMP_TARGETS = {
+  firstFix: () => {
+    const issuesBtn = Array.from(document.querySelectorAll('#wiki-links button')).find((b) => b.textContent === 'Issues');
+    if (issuesBtn) issuesBtn.click();
+  },
+  ciGate: () => {
+    const gateSelect = document.querySelector('.gate-select');
+    if (gateSelect) gateSelect.closest('.detail-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+  suppression: () => {
+    const details = document.getElementById('suppression-rules-details');
+    if (details) {
+      details.open = true;
+      details.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  },
+};
+
 function renderOnboardingChecklist(appId, checklist) {
   onboardingSummaryBadge.textContent = `${checklist.doneCount}/${checklist.total}`;
   onboardingSummaryBadge.className = 'tag-badge ' + (checklist.complete ? 'status-done' : '');
   onboardingChecklistEl.innerHTML = '';
   for (const item of checklist.items) {
     const li = document.createElement('li');
+    li.className = 'onboarding-item';
+
     const label = document.createElement('label');
     label.className = 'checkbox-label';
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = item.done;
-    if (item.auto) {
+    if (!item.manualField || item.auto) {
       checkbox.disabled = true;
-      label.title = 'Derived automatically from this app\'s Owner/Tags fields — edit those above instead.';
+      label.title = item.auto ? 'Derived automatically from real activity on this app.' : 'Not yet done.';
     } else {
       checkbox.addEventListener('change', async () => {
         const updated = await fetch(`/api/apps/${appId}/onboarding`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ [item.id]: checkbox.checked }),
+          body: JSON.stringify({ [item.manualField]: checkbox.checked }),
         }).then((r) => r.json());
         renderOnboardingChecklist(appId, updated);
       });
     }
     const text = document.createElement('span');
-    text.textContent = item.label + (item.auto ? ' (auto)' : '');
+    text.textContent = item.label + (item.done && item.auto ? ' ✓' : '');
     label.append(checkbox, text);
     li.appendChild(label);
+
+    const why = document.createElement('p');
+    why.className = 'onboarding-why';
+    why.textContent = item.why;
+    li.appendChild(why);
+
+    if (!item.done) {
+      const ctaRow = document.createElement('p');
+      ctaRow.className = 'onboarding-cta';
+      const ctaText = document.createElement('span');
+      ctaText.textContent = item.cta;
+      ctaRow.appendChild(ctaText);
+      const jump = ONBOARDING_JUMP_TARGETS[item.id];
+      if (jump) {
+        ctaRow.appendChild(document.createTextNode(' '));
+        const jumpBtn = document.createElement('button');
+        jumpBtn.type = 'button';
+        jumpBtn.className = 'link-button';
+        jumpBtn.textContent = 'Take me there →';
+        jumpBtn.addEventListener('click', jump);
+        ctaRow.appendChild(jumpBtn);
+      }
+      li.appendChild(ctaRow);
+    }
+
     onboardingChecklistEl.appendChild(li);
   }
 }
@@ -1853,193 +2407,237 @@ function badgeFieldRow(label, value, badgeClass, baseClass) {
   return [dt, dd];
 }
 
+// ---- openDetail card renderers ----
+// Split out of openDetail's withViewTransition callback (was a single
+// ~260-line arrow function with cyclomatic complexity 36 — every card's
+// branches summed into one function). Each renderer below is its own
+// top-level function, so its branches count against its own (much lower)
+// complexity instead of the callback's.
+
+// Feature 11: cross-environment comparison — apps sharing this app's name
+// but registered under a different Environment (e.g. "Billing API" in
+// Staging vs Production) are almost always the same underlying service
+// scanned twice, so surface a one-click compare against each.
+function renderCrossEnvironmentRow(app) {
+  const siblings = allApps.filter((a) => a.id !== app.id && a.name.toLowerCase() === app.name.toLowerCase());
+  if (!siblings.length) return;
+  const crossEnvDt = document.createElement('dt');
+  crossEnvDt.textContent = 'Cross-Environment';
+  const crossEnvDd = document.createElement('dd');
+  for (const sib of siblings) {
+    const link = document.createElement('a');
+    link.href = '#';
+    link.className = 'tag-badge tech-app-chip';
+    link.textContent = `vs. ${sib.environment || 'no env'}`;
+    link.title = `Compare against "${sib.name}" (${sib.environment || 'no env'})`;
+    link.addEventListener('click', (e) => { e.preventDefault(); openCompareWith(app.id, sib.id); });
+    crossEnvDd.appendChild(link);
+  }
+  detailMetaOverview.append(crossEnvDt, crossEnvDd);
+}
+
+// ---- Overview card: read-only facts about what this app is ----
+function renderOverviewCard(app) {
+  detailMetaOverview.append(...fieldRow('Path / Repo', app.pathOrRepo));
+  detailMetaOverview.append(...fieldRow('Purpose', app.purpose));
+  detailMetaOverview.append(...fieldRow('Owner / Team', app.owner));
+  detailMetaOverview.append(...badgeFieldRow('Environment', app.environment, ENV_BADGE_CLASS[app.environment] || 'env-internal', 'env-badge'));
+
+  renderCrossEnvironmentRow(app);
+
+  detailMetaOverview.append(...fieldRow('Tech Stack', app.techStack));
+  detailMetaOverview.append(...fieldRow('Tags', (app.tags || []).join(', ')));
+  detailMetaOverview.append(...fieldRow('Notes', app.notes));
+  detailMetaOverview.append(...fieldRow('Scan Mode', app.scanMode === 'deep' ? 'Deep (LLM-assisted)' : 'Static (fast, pattern-based)'));
+  detailMetaOverview.append(...badgeFieldRow('Status', app.status, statusClass(app.status), 'status-badge'));
+
+  // Feature 14: scan performance metrics — duration and files processed
+  // (cache hits + misses) from the most recent scan.
+  if (app.stats && app.stats.durationMs !== undefined) {
+    detailMetaOverview.append(...fieldRow('Last Scan Performance', `${formatDuration(app.stats.durationMs)} — ${app.stats.filesProcessed} file(s) processed (${app.stats.cacheHits} cached, ${app.stats.cacheMisses} reprocessed)`));
+  }
+
+  detailMetaOverview.append(...fieldRow('Wiki Location', app.wikiLink));
+  detailMetaOverview.append(...fieldRow('Last Scanned', app.scannedAt ? new Date(app.scannedAt).toLocaleString() : ''));
+  if (app.lastScannedRef) {
+    const refText = (app.lastScannedRef.branch ? `${app.lastScannedRef.branch} @ ` : '') + app.lastScannedRef.commit
+      + (app.lastScannedRef.ref && app.lastScannedRef.ref !== app.lastScannedRef.branch ? ` (requested: ${app.lastScannedRef.ref})` : '');
+    detailMetaOverview.append(...fieldRow('Last Scanned Ref', refText));
+  }
+  if (app.error) detailMetaOverview.append(...fieldRow('Error', app.error));
+}
+
+// Feature: scan a specific branch/tag/commit instead of always the
+// default branch (repo URL targets only — a local path ignores this).
+function renderGitRefField(app, id) {
+  const gitRefDt = document.createElement('dt');
+  gitRefDt.textContent = 'Git Ref';
+  const gitRefDd = document.createElement('dd');
+  const gitRefInput = document.createElement('input');
+  gitRefInput.type = 'text';
+  gitRefInput.placeholder = 'default branch';
+  gitRefInput.value = app.gitRef || '';
+  gitRefInput.addEventListener('blur', async () => {
+    if (gitRefInput.value === (app.gitRef || '')) return;
+    await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ gitRef: gitRefInput.value.trim() }) });
+  });
+  gitRefInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') gitRefInput.blur(); });
+  gitRefDd.appendChild(gitRefInput);
+  detailMetaSettings.append(gitRefDt, gitRefDd);
+}
+
+// Feature 6: the CLI's --fail-on gating threshold, surfaced here as an
+// editable per-app setting instead of CLI-only, with a live pass/fail
+// readout against the latest scan so the setting isn't just inert text.
+function renderGateField(app, id) {
+  const gateDt = document.createElement('dt');
+  gateDt.textContent = 'CI Gate Severity';
+  const gateDd = document.createElement('dd');
+  const gateSelect = document.createElement('select');
+  gateSelect.className = 'gate-select';
+  gateSelect.disabled = !hasRole('admin');
+  if (gateSelect.disabled) gateSelect.title = 'Requires the "admin" role to change.';
+  for (const s of ['Critical', 'High', 'Medium', 'Low']) {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    if (s === (app.failOnSeverity || 'Critical')) opt.selected = true;
+    gateSelect.appendChild(opt);
+  }
+  const gateStatus = document.createElement('span');
+  gateStatus.className = 'gate-status';
+  async function refreshGateStatus() {
+    if (app.status !== 'Done') { gateStatus.textContent = ''; return; }
+    gateStatus.textContent = 'Checking…';
+    gateStatus.className = 'gate-status';
+    const issues = await api(`/${id}/issues`);
+    const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+    const threshold = order[gateSelect.value];
+    const active = issues.filter((i) => i.triage.state !== 'false_positive' && i.triage.state !== 'fixed' && !i.suppressedByRule);
+    const failing = active.some((i) => order[i.severity] <= threshold);
+    gateStatus.textContent = failing ? 'Would FAIL CI' : 'Would PASS CI';
+    gateStatus.className = 'gate-status ' + (failing ? 'gate-fail' : 'gate-pass');
+  }
+  gateSelect.addEventListener('change', async () => {
+    await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ failOnSeverity: gateSelect.value }) });
+    refreshGateStatus();
+  });
+  gateDd.append(gateSelect, document.createTextNode(' '), gateStatus);
+  detailMetaSettings.append(gateDt, gateDd);
+  refreshGateStatus();
+}
+
+// Feature: on-completion webhook, plus the severity threshold that
+// gates it (see notifySeverity in db.js / notify.js) — was hardcoded to
+// "High" (Critical+High), now editable per app like gitRef/blur-to-save.
+function renderNotifyField(app, id) {
+  const notifyDt = document.createElement('dt');
+  notifyDt.textContent = 'Notify Webhook';
+  const notifyDd = document.createElement('dd');
+  const notifyUrlInput = document.createElement('input');
+  notifyUrlInput.type = 'text';
+  notifyUrlInput.placeholder = 'Slack incoming webhook or generic URL';
+  notifyUrlInput.value = app.notifyWebhookUrl || '';
+  notifyUrlInput.style.width = '60%';
+  const notifySeveritySelect = document.createElement('select');
+  for (const s of ['Critical', 'High', 'Medium', 'Low']) {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s === 'Critical' ? 'Critical only' : `${s}+`;
+    if (s === (app.notifySeverity || 'High')) opt.selected = true;
+    notifySeveritySelect.appendChild(opt);
+  }
+  const saveNotify = async () => {
+    app.notifyWebhookUrl = notifyUrlInput.value.trim();
+    await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ notifyWebhookUrl: app.notifyWebhookUrl, notifySeverity: notifySeveritySelect.value }) });
+  };
+  notifyUrlInput.addEventListener('blur', saveNotify);
+  notifyUrlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') notifyUrlInput.blur(); });
+  notifySeveritySelect.addEventListener('change', saveNotify);
+  notifyDd.append(notifyUrlInput, document.createTextNode(' '), notifySeveritySelect);
+  detailMetaSettings.append(notifyDt, notifyDd);
+}
+
+// Feature 12: weekly digest — a periodic rollup, opt-in and editable
+// per app, distinct from the on-completion webhook notification.
+function renderDigestField(app, id) {
+  const digestDt = document.createElement('dt');
+  digestDt.textContent = 'Weekly Digest';
+  const digestDd = document.createElement('dd');
+  const digestLabel = document.createElement('label');
+  digestLabel.style.display = 'inline-flex';
+  digestLabel.style.alignItems = 'center';
+  digestLabel.style.gap = '0.4rem';
+  digestLabel.style.marginBottom = '0';
+  const digestCheckbox = document.createElement('input');
+  digestCheckbox.type = 'checkbox';
+  digestCheckbox.checked = !!app.digestEnabled;
+  digestCheckbox.disabled = !app.notifyWebhookUrl;
+  digestCheckbox.addEventListener('change', async () => {
+    await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ digestEnabled: digestCheckbox.checked }) });
+  });
+  const digestText = document.createElement('span');
+  digestText.textContent = app.notifyWebhookUrl
+    ? (app.lastDigestAt ? `Last sent ${new Date(app.lastDigestAt).toLocaleString()}` : 'Not sent yet')
+    : 'Requires a Notify Webhook URL';
+  digestLabel.append(digestCheckbox, digestText);
+  digestDd.appendChild(digestLabel);
+  detailMetaSettings.append(digestDt, digestDd);
+}
+
+// ---- Danger Zone card: destructive or exposure-widening actions ----
+
+// Feature 17: archiving retires an app from the default list/portfolio
+// rollups without touching its stored scan history — reversible from
+// here at any time.
+function renderArchiveField(app, id) {
+  const archiveDt = document.createElement('dt');
+  archiveDt.textContent = 'Archived';
+  const archiveDd = document.createElement('dd');
+  const archiveBtn = document.createElement('button');
+  archiveBtn.type = 'button';
+  archiveBtn.className = 'secondary';
+  archiveBtn.textContent = app.archived ? 'Unarchive' : 'Archive';
+  archiveBtn.addEventListener('click', async () => {
+    await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ archived: !app.archived }) });
+    await refreshList();
+    openDetail(id);
+  });
+  archiveDd.appendChild(archiveBtn);
+  if (app.archived) {
+    const note = document.createElement('span');
+    note.style.marginLeft = '0.6rem';
+    note.style.color = 'var(--muted)';
+    note.style.fontSize = '0.82rem';
+    note.textContent = 'Hidden from the default list and portfolio rollups. Scan history is kept.';
+    archiveDd.appendChild(note);
+  }
+  detailMetaDanger.append(archiveDt, archiveDd);
+}
+
 async function openDetail(id) {
   currentDetailId = id;
   const app = await api(`/${id}`);
   currentDetailApp = app;
   withViewTransition(() => {
-    listPanel.hidden = true;
-    detailPanel.hidden = false;
+    showOnly(detailPanel);
+    breadcrumbCurrent.textContent = app.name;
     detailName.textContent = app.name;
-    detailMeta.innerHTML = '';
+    detailMetaOverview.innerHTML = '';
+    detailMetaSettings.innerHTML = '';
+    detailMetaDanger.innerHTML = '';
+    editAppForm.hidden = true;
+    detailMetaOverview.hidden = false;
+    editAppStatus.textContent = '';
     const SCHEDULE_LABELS = { 0: 'Off', 60: 'Hourly', 1440: 'Daily', 10080: 'Weekly' };
 
-    detailMeta.append(...fieldRow('Path / Repo', app.pathOrRepo));
-
-    // Feature: scan a specific branch/tag/commit instead of always the
-    // default branch (repo URL targets only — a local path ignores this).
-    // Editable here, takes effect on the next scan.
-    const gitRefDt = document.createElement('dt');
-    gitRefDt.textContent = 'Git Ref';
-    const gitRefDd = document.createElement('dd');
-    const gitRefInput = document.createElement('input');
-    gitRefInput.type = 'text';
-    gitRefInput.placeholder = 'default branch';
-    gitRefInput.value = app.gitRef || '';
-    gitRefInput.addEventListener('blur', async () => {
-      if (gitRefInput.value === (app.gitRef || '')) return;
-      await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ gitRef: gitRefInput.value.trim() }) });
-    });
-    gitRefInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') gitRefInput.blur(); });
-    gitRefDd.appendChild(gitRefInput);
-    detailMeta.append(gitRefDt, gitRefDd);
-    detailMeta.append(...fieldRow('Purpose', app.purpose));
-    detailMeta.append(...fieldRow('Owner / Team', app.owner));
-    detailMeta.append(...badgeFieldRow('Environment', app.environment, ENV_BADGE_CLASS[app.environment] || 'env-internal', 'env-badge'));
-
-    // Feature 11: cross-environment comparison — apps sharing this app's
-    // name but registered under a different Environment (e.g. "Billing API"
-    // in Staging vs Production) are almost always the same underlying
-    // service scanned twice, so surface a one-click compare against each.
-    const siblings = allApps.filter((a) => a.id !== app.id && a.name.toLowerCase() === app.name.toLowerCase());
-    if (siblings.length) {
-      const crossEnvDt = document.createElement('dt');
-      crossEnvDt.textContent = 'Cross-Environment';
-      const crossEnvDd = document.createElement('dd');
-      for (const sib of siblings) {
-        const link = document.createElement('a');
-        link.href = '#';
-        link.className = 'tag-badge tech-app-chip';
-        link.textContent = `vs. ${sib.environment || 'no env'}`;
-        link.title = `Compare against "${sib.name}" (${sib.environment || 'no env'})`;
-        link.addEventListener('click', (e) => { e.preventDefault(); openCompareWith(app.id, sib.id); });
-        crossEnvDd.appendChild(link);
-      }
-      detailMeta.append(crossEnvDt, crossEnvDd);
-    }
-
-    detailMeta.append(...fieldRow('Tech Stack', app.techStack));
-    detailMeta.append(...fieldRow('Tags', (app.tags || []).join(', ')));
-    detailMeta.append(...fieldRow('Notes', app.notes));
-    detailMeta.append(...fieldRow('Scan Mode', app.scanMode === 'deep' ? 'Deep (LLM-assisted)' : 'Static (fast, pattern-based)'));
-
-    // Feature 6: the CLI's --fail-on gating threshold, surfaced here as an
-    // editable per-app setting instead of CLI-only, with a live pass/fail
-    // readout against the latest scan so the setting isn't just inert text.
-    const gateDt = document.createElement('dt');
-    gateDt.textContent = 'CI Gate Severity';
-    const gateDd = document.createElement('dd');
-    const gateSelect = document.createElement('select');
-    gateSelect.className = 'gate-select';
-    gateSelect.disabled = !hasRole('admin');
-    if (gateSelect.disabled) gateSelect.title = 'Requires the "admin" role to change.';
-    for (const s of ['Critical', 'High', 'Medium', 'Low']) {
-      const opt = document.createElement('option');
-      opt.value = s;
-      opt.textContent = s;
-      if (s === (app.failOnSeverity || 'Critical')) opt.selected = true;
-      gateSelect.appendChild(opt);
-    }
-    const gateStatus = document.createElement('span');
-    gateStatus.className = 'gate-status';
-    async function refreshGateStatus() {
-      if (app.status !== 'Done') { gateStatus.textContent = ''; return; }
-      gateStatus.textContent = 'Checking…';
-      gateStatus.className = 'gate-status';
-      const issues = await api(`/${id}/issues`);
-      const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
-      const threshold = order[gateSelect.value];
-      const active = issues.filter((i) => i.triage.state !== 'false_positive' && i.triage.state !== 'fixed' && !i.suppressedByRule);
-      const failing = active.some((i) => order[i.severity] <= threshold);
-      gateStatus.textContent = failing ? 'Would FAIL CI' : 'Would PASS CI';
-      gateStatus.className = 'gate-status ' + (failing ? 'gate-fail' : 'gate-pass');
-    }
-    gateSelect.addEventListener('change', async () => {
-      await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ failOnSeverity: gateSelect.value }) });
-      refreshGateStatus();
-    });
-    gateDd.append(gateSelect, document.createTextNode(' '), gateStatus);
-    detailMeta.append(gateDt, gateDd);
-    refreshGateStatus();
-
-    detailMeta.append(...fieldRow('Auto-rescan', SCHEDULE_LABELS[app.scheduleMinutes] || `Every ${app.scheduleMinutes} min`));
-
-    // Feature: on-completion webhook, plus the severity threshold that
-    // gates it (see notifySeverity in db.js / notify.js) — was hardcoded to
-    // "High" (Critical+High), now editable per app like gitRef/blur-to-save.
-    const notifyDt = document.createElement('dt');
-    notifyDt.textContent = 'Notify Webhook';
-    const notifyDd = document.createElement('dd');
-    const notifyUrlInput = document.createElement('input');
-    notifyUrlInput.type = 'text';
-    notifyUrlInput.placeholder = 'Slack incoming webhook or generic URL';
-    notifyUrlInput.value = app.notifyWebhookUrl || '';
-    notifyUrlInput.style.width = '60%';
-    const notifySeveritySelect = document.createElement('select');
-    for (const s of ['Critical', 'High', 'Medium', 'Low']) {
-      const opt = document.createElement('option');
-      opt.value = s;
-      opt.textContent = s === 'Critical' ? 'Critical only' : `${s}+`;
-      if (s === (app.notifySeverity || 'High')) opt.selected = true;
-      notifySeveritySelect.appendChild(opt);
-    }
-    const saveNotify = async () => {
-      app.notifyWebhookUrl = notifyUrlInput.value.trim();
-      await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ notifyWebhookUrl: app.notifyWebhookUrl, notifySeverity: notifySeveritySelect.value }) });
-    };
-    notifyUrlInput.addEventListener('blur', saveNotify);
-    notifyUrlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') notifyUrlInput.blur(); });
-    notifySeveritySelect.addEventListener('change', saveNotify);
-    notifyDd.append(notifyUrlInput, document.createTextNode(' '), notifySeveritySelect);
-    detailMeta.append(notifyDt, notifyDd);
-
-    // Feature 12: weekly digest — a periodic rollup, opt-in and editable
-    // per app, distinct from the on-completion webhook notification.
-    const digestDt = document.createElement('dt');
-    digestDt.textContent = 'Weekly Digest';
-    const digestDd = document.createElement('dd');
-    const digestLabel = document.createElement('label');
-    digestLabel.style.display = 'inline-flex';
-    digestLabel.style.alignItems = 'center';
-    digestLabel.style.gap = '0.4rem';
-    digestLabel.style.marginBottom = '0';
-    const digestCheckbox = document.createElement('input');
-    digestCheckbox.type = 'checkbox';
-    digestCheckbox.checked = !!app.digestEnabled;
-    digestCheckbox.disabled = !app.notifyWebhookUrl;
-    digestCheckbox.addEventListener('change', async () => {
-      await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ digestEnabled: digestCheckbox.checked }) });
-    });
-    const digestText = document.createElement('span');
-    digestText.textContent = app.notifyWebhookUrl
-      ? (app.lastDigestAt ? `Last sent ${new Date(app.lastDigestAt).toLocaleString()}` : 'Not sent yet')
-      : 'Requires a Notify Webhook URL';
-    digestLabel.append(digestCheckbox, digestText);
-    digestDd.appendChild(digestLabel);
-    detailMeta.append(digestDt, digestDd);
-    detailMeta.append(...badgeFieldRow('Status', app.status, statusClass(app.status), 'status-badge'));
-
-    // Feature 14: scan performance metrics — duration and files processed
-    // (cache hits + misses) from the most recent scan.
-    if (app.stats && app.stats.durationMs !== undefined) {
-      detailMeta.append(...fieldRow('Last Scan Performance', `${formatDuration(app.stats.durationMs)} — ${app.stats.filesProcessed} file(s) processed (${app.stats.cacheHits} cached, ${app.stats.cacheMisses} reprocessed)`));
-    }
-
-    // Feature 17: archiving retires an app from the default list/portfolio
-    // rollups without touching its stored scan history — reversible from
-    // here at any time.
-    const archiveDt = document.createElement('dt');
-    archiveDt.textContent = 'Archived';
-    const archiveDd = document.createElement('dd');
-    const archiveBtn = document.createElement('button');
-    archiveBtn.type = 'button';
-    archiveBtn.className = 'secondary';
-    archiveBtn.textContent = app.archived ? 'Unarchive' : 'Archive';
-    archiveBtn.addEventListener('click', async () => {
-      await api(`/${id}`, { method: 'PATCH', body: JSON.stringify({ archived: !app.archived }) });
-      await refreshList();
-      openDetail(id);
-    });
-    archiveDd.appendChild(archiveBtn);
-    if (app.archived) {
-      const note = document.createElement('span');
-      note.style.marginLeft = '0.6rem';
-      note.style.color = 'var(--muted)';
-      note.style.fontSize = '0.82rem';
-      note.textContent = 'Hidden from the default list and portfolio rollups. Scan history is kept.';
-      archiveDd.appendChild(note);
-    }
-    detailMeta.append(archiveDt, archiveDd);
+    renderOverviewCard(app);
+    renderGitRefField(app, id);
+    renderGateField(app, id);
+    detailMetaSettings.append(...fieldRow('Auto-rescan', SCHEDULE_LABELS[app.scheduleMinutes] || `Every ${app.scheduleMinutes} min`));
+    renderNotifyField(app, id);
+    renderDigestField(app, id);
+    renderArchiveField(app, id);
 
     // Public read-only share link — unauthenticated, scoped to just this
     // app's wiki (see src/routes/share.js). Generating/revoking requires
@@ -2050,17 +2648,8 @@ async function openDetail(id) {
     const shareStatus = document.createElement('span');
     shareStatus.textContent = 'Loading…';
     shareDd.appendChild(shareStatus);
-    detailMeta.append(shareDt, shareDd);
+    detailMetaDanger.append(shareDt, shareDd);
     loadShareStatus(id, shareDd);
-
-    detailMeta.append(...fieldRow('Wiki Location', app.wikiLink));
-    detailMeta.append(...fieldRow('Last Scanned', app.scannedAt ? new Date(app.scannedAt).toLocaleString() : ''));
-    if (app.lastScannedRef) {
-      const refText = (app.lastScannedRef.branch ? `${app.lastScannedRef.branch} @ ` : '') + app.lastScannedRef.commit
-        + (app.lastScannedRef.ref && app.lastScannedRef.ref !== app.lastScannedRef.branch ? ` (requested: ${app.lastScannedRef.ref})` : '');
-      detailMeta.append(...fieldRow('Last Scanned Ref', refText));
-    }
-    if (app.error) detailMeta.append(...fieldRow('Error', app.error));
 
     trackerForm.trackerType.value = app.trackerType || 'none';
     trackerForm.trackerBaseUrl.value = app.trackerBaseUrl || '';
@@ -2076,12 +2665,14 @@ async function openDetail(id) {
   loadIgnorePatterns(id);
   loadMaskRules(id);
   loadSuppressionRules(id);
+  loadSuppressionAuditLog(id);
   loadOnboardingChecklist(id);
 
   if (app.status === 'Done' && app.wikiLink) {
     closeScanStream();
     wikiNav.hidden = false;
     await renderWikiNav(id, app);
+    setActiveWikiNav('Home.md');
     await loadWikiPage(id, 'Home.md');
   } else if (app.status === 'Scanning') {
     wikiNav.hidden = true;
@@ -2128,17 +2719,63 @@ trackerForm.addEventListener('submit', async (e) => {
   }
 });
 
+// The wiki nav is the app's primary in-context navigation (13+ same-shaped
+// buttons across several groups) and previously gave no indication of which
+// page you were actually on — every button looked identical whether or not
+// its page was the one currently showing in wikiView. `key` marks a button
+// as a navigation destination (pages, tools, custom sections); action
+// buttons like "Export Static Site" pass no key and are never marked active.
+function setActiveWikiNav(key) {
+  wikiLinks.querySelectorAll('button[data-nav-key]').forEach((b) => {
+    b.classList.toggle('wiki-nav-active', b.dataset.navKey === key);
+  });
+}
+
 function wikiNavGroup(items) {
   const group = document.createElement('div');
   group.className = 'wiki-nav-group';
-  for (const [label, handler] of items) {
+  for (const [label, handler, key] of items) {
     const btn = document.createElement('button');
     btn.className = 'secondary';
     btn.textContent = label;
-    btn.addEventListener('click', handler);
+    if (key) btn.dataset.navKey = key;
+    btn.addEventListener('click', () => {
+      if (key) setActiveWikiNav(key);
+      handler();
+    });
     group.appendChild(btn);
   }
   return group;
+}
+
+// A native <select> jump-menu rather than a custom dropdown component — the
+// browser already solves positioning/keyboard/overlay-escape for free, and
+// the currently-picked item's label showing in the closed select doubles as
+// a lightweight "you're here" cue without a second visual system.
+function wikiNavMoreDropdown(items) {
+  const wrap = document.createElement('span');
+  wrap.className = 'wiki-nav-more';
+  const select = document.createElement('select');
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'More ▾';
+  select.appendChild(placeholder);
+  for (const [label, , key] of items) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = label;
+    select.appendChild(opt);
+  }
+  select.addEventListener('change', () => {
+    const picked = items.find(([, , key]) => key === select.value);
+    select.value = '';
+    if (!picked) return;
+    const [, handler, key] = picked;
+    setActiveWikiNav(key);
+    handler();
+  });
+  wrap.appendChild(select);
+  return wrap;
 }
 
 async function renderWikiNav(id, app) {
@@ -2151,22 +2788,27 @@ async function renderWikiNav(id, app) {
     ['Change Log', 'Change-Log.md'],
     ['Setup', 'Setup.md'],
     ['Progress', 'Progress.md'],
-  ].map(([label, p]) => [label, () => loadWikiPage(id, p)]);
+  ].map(([label, p]) => [label, () => loadWikiPage(id, p), p]);
 
   const tools = [
-    ['Issues', () => loadIssuesInteractive(id)],
-    ['Data Dictionary', () => loadDictionaryInteractive(id)],
-    ['Env Vars', () => loadEnvVarsInteractive(id)],
-    ['Process Flows', () => loadProcessFlowsView(id)],
-    ['Dependency Graph', () => loadGraphView(id)],
-    ['History', () => loadHistory(id)],
+    ['Issues', () => loadIssuesInteractive(id), 'Issues'],
+    ['Env Vars', () => loadEnvVarsInteractive(id), 'Env Vars'],
+    ['History', () => loadHistory(id), 'History'],
+  ];
+
+  // Less frequently reached for than the tabs above — grouped under one
+  // "More" jump-menu instead of three more same-weight buttons in the row.
+  const moreItems = [
+    ['Data Dictionary', () => loadDictionaryInteractive(id), 'Data Dictionary'],
+    ['Process Flows', () => loadProcessFlowsView(id), 'Process Flows'],
+    ['Dependency Graph', () => loadGraphView(id), 'Dependency Graph'],
   ];
 
   const actions = [['Export Static Site', () => exportStaticSite(id)]];
   const isRepo = /^https?:\/\/|\.git$/.test(app.pathOrRepo || '');
   if (isRepo) actions.push(['Push to Wiki Repo', () => pushGithubWiki(id)]);
 
-  wikiLinks.append(wikiNavGroup(pages), wikiNavGroup(tools));
+  wikiLinks.append(wikiNavGroup(pages), wikiNavGroup(tools), wikiNavMoreDropdown(moreItems));
 
   // Feature 10: custom wiki sections — team-added markdown pages that live
   // outside the generated wiki/ dir, so they persist across rescans. Own
@@ -2174,7 +2816,7 @@ async function renderWikiNav(id, app) {
   try {
     const customSections = await api(`/${id}/wiki-sections`);
     if (customSections.length) {
-      wikiLinks.appendChild(wikiNavGroup(customSections.map((s) => [s.title, () => loadCustomSection(id, s.slug)])));
+      wikiLinks.appendChild(wikiNavGroup(customSections.map((s) => [s.title, () => loadCustomSection(id, s.slug), `custom:${s.slug}`])));
     }
   } catch {
     // non-fatal — custom pages just won't show up in the nav this time
@@ -2222,6 +2864,7 @@ function renderCustomSectionEditor(id, section) {
     deleteBtn.addEventListener('click', async () => {
       await api(`/${id}/wiki-sections/${encodeURIComponent(section.slug)}`, { method: 'DELETE' });
       await renderWikiNav(id, currentDetailApp);
+      setActiveWikiNav('Home.md');
       loadWikiPage(id, 'Home.md');
     });
 
@@ -2240,6 +2883,7 @@ function renderCustomSectionEditor(id, section) {
         status.textContent = 'Saved.';
         status.classList.add('success');
         await renderWikiNav(id, currentDetailApp); // title may have changed
+        setActiveWikiNav(`custom:${section.slug}`);
         setTimeout(() => { status.textContent = ''; status.classList.remove('success'); }, 1500);
       } catch (err) {
         status.textContent = 'Error: ' + err.message;
@@ -2278,6 +2922,7 @@ addPageForm.addEventListener('submit', async (e) => {
     const section = await api(`/${currentDetailId}/wiki-sections`, { method: 'POST', body: JSON.stringify({ title, content: '' }) });
     addPageTitleInput.value = '';
     await renderWikiNav(currentDetailId, currentDetailApp);
+    setActiveWikiNav(`custom:${section.slug}`);
     renderCustomSectionEditor(currentDetailId, section);
   } catch (err) {
     wikiView.textContent = 'Could not create page: ' + err.message;
@@ -2312,6 +2957,358 @@ async function pushGithubWiki(id) {
 const TRIAGE_STATES = ['open', 'acknowledged', 'false_positive', 'fixed'];
 const SEVERITY_BADGE_CLASS = { Critical: 'severity-critical', High: 'severity-high', Medium: 'severity-medium', Low: 'severity-low' };
 
+// The triage select otherwise carries zero color signal — every state
+// (including "fixed") renders as the same neutral control, so telling
+// "still open" from "resolved" means reading the text in every row instead
+// of scanning for it. Same restrained pattern as env-select-production/
+// -staging: border + text color only, no fill. "open" and "false_positive"
+// stay neutral on purpose — open is the default/common case (nothing to
+// flag), and false_positive already reads as dismissed via the row's
+// existing opacity fade.
+function triageSelectClass(state) {
+  if (state === 'fixed') return 'triage-select-ok';
+  if (state === 'acknowledged') return 'triage-select-info';
+  return '';
+}
+
+const ISSUE_ROW_SUMMARY_TRUNCATE_AT = 75;
+const SEVERITY_RANK = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+
+// A single issue's row + its hidden detail row — extracted so the same
+// rendering can be reused both for a standalone finding and for each member
+// of a collapsed duplicate-finding group (see groupIssuesForDisplay below).
+// ---- buildIssueRow helpers ----
+// Split out of buildIssueRow (was one function with cyclomatic complexity
+// 24 — the primary row, detail row, and tracker-push section's branches all
+// summed together). Each piece below builds one cell or one dl section.
+
+function buildIssueSummaryCell(issue) {
+  const summaryTd = document.createElement('td');
+  summaryTd.className = 'cell-summary';
+  const isLong = issue.summary.length > ISSUE_ROW_SUMMARY_TRUNCATE_AT;
+  const summarySpan = document.createElement('span');
+  summarySpan.textContent = isLong ? issue.summary.slice(0, ISSUE_ROW_SUMMARY_TRUNCATE_AT - 1).trimEnd() + '…' : issue.summary;
+  summaryTd.appendChild(summarySpan);
+  summaryTd.appendChild(document.createTextNode(' '));
+  const detailsBtn = document.createElement('button');
+  detailsBtn.type = 'button';
+  detailsBtn.className = 'link-button details-toggle';
+  detailsBtn.textContent = 'Show details';
+  summaryTd.appendChild(detailsBtn);
+  return { summaryTd, detailsBtn };
+}
+
+function buildIssueTriageCell(issue, id) {
+  const triageTd = document.createElement('td');
+  const select = document.createElement('select');
+  select.className = triageSelectClass(issue.triage.state);
+  for (const s of TRIAGE_STATES) {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    if (s === issue.triage.state) opt.selected = true;
+    select.appendChild(opt);
+  }
+  select.addEventListener('change', async () => {
+    await api(`/${id}/issues/triage`, { method: 'POST', body: JSON.stringify({ fingerprint: issue.fingerprint, state: select.value }) });
+    loadIssuesInteractive(id);
+  });
+  triageTd.appendChild(select);
+  if (issue.suppressedByRule) {
+    const badge = document.createElement('div');
+    badge.className = 'override-badge';
+    badge.textContent = 'Auto-suppressed';
+    badge.title = 'Matches a Suppression Rule above — excluded from active counts and CI gating regardless of this triage state.';
+    triageTd.appendChild(badge);
+  }
+  if (issue.triage.assignee) {
+    const chip = document.createElement('div');
+    chip.className = 'assignee-chip';
+    chip.textContent = issue.triage.assignee;
+    chip.title = 'Assigned to ' + issue.triage.assignee;
+    triageTd.appendChild(chip);
+  }
+  return triageTd;
+}
+
+function buildIssuePrimaryRow(issue, id) {
+  const tr = document.createElement('tr');
+  tr.dataset.source = issue.source || 'static';
+  tr.dataset.severity = issue.severity;
+  if (issue.triage.state === 'false_positive' || issue.triage.state === 'fixed' || issue.suppressedByRule) tr.style.opacity = '0.5';
+
+  const severityTd = document.createElement('td');
+  const severityBadge = document.createElement('span');
+  severityBadge.className = 'severity-badge ' + (SEVERITY_BADGE_CLASS[issue.severity] || 'severity-low');
+  severityBadge.textContent = issue.severity;
+  severityTd.appendChild(severityBadge);
+  tr.appendChild(severityTd);
+
+  const categoryTd = document.createElement('td');
+  categoryTd.className = 'cell-category';
+  categoryTd.textContent = issue.category;
+  tr.appendChild(categoryTd);
+
+  const fileTd = document.createElement('td');
+  fileTd.className = 'cell-file';
+  fileTd.textContent = issue.file.split('/').pop();
+  fileTd.title = issue.file;
+  tr.appendChild(fileTd);
+
+  const lineTd = document.createElement('td');
+  lineTd.textContent = String(issue.line);
+  tr.appendChild(lineTd);
+
+  const { summaryTd, detailsBtn } = buildIssueSummaryCell(issue);
+  tr.appendChild(summaryTd);
+  tr.appendChild(buildIssueTriageCell(issue, id));
+
+  return { tr, detailsBtn };
+}
+
+function buildIssueDetailEntries(issue) {
+  const dl = document.createElement('dl');
+  dl.className = 'issue-detail';
+  const addEntry = (term, value) => {
+    const dt = document.createElement('dt');
+    dt.textContent = term;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    dl.append(dt, dd);
+  };
+  const addCodeEntry = (term, code) => {
+    const dt = document.createElement('dt');
+    dt.textContent = term;
+    const dd = document.createElement('dd');
+    const pre = document.createElement('pre');
+    pre.className = 'issue-code-example';
+    pre.textContent = code;
+    dd.appendChild(pre);
+    dl.append(dt, dd);
+  };
+  addEntry('File', issue.file);
+  addEntry('Summary', issue.summary);
+  if (issue.suggestedFix) addEntry('Suggested Fix', issue.suggestedFix);
+  if (issue.cwe) addEntry('CWE / OWASP', issue.cwe);
+  if (issue.proposedFix) {
+    addCodeEntry('Proposed Fix (Deep Scan)', issue.proposedFix.diff);
+    if (issue.proposedFix.explanation) addEntry('Why this fix', issue.proposedFix.explanation);
+  } else if (issue.codeExample) {
+    addCodeEntry('Before', issue.codeExample.before);
+    addCodeEntry('After', issue.codeExample.after);
+  }
+  if (issue.triage.note) addEntry('Triage Note', issue.triage.note);
+  return dl;
+}
+
+function appendAssigneeEntry(dl, issue, id) {
+  const assigneeDt = document.createElement('dt');
+  assigneeDt.textContent = 'Assignee';
+  const assigneeDd = document.createElement('dd');
+  const assigneeInput = document.createElement('input');
+  assigneeInput.type = 'text';
+  assigneeInput.placeholder = 'Unassigned — add a person or team';
+  assigneeInput.value = issue.triage.assignee || '';
+  assigneeInput.addEventListener('blur', async () => {
+    if (assigneeInput.value === (issue.triage.assignee || '')) return;
+    await api(`/${id}/issues/assign`, { method: 'POST', body: JSON.stringify({ fingerprint: issue.fingerprint, assignee: assigneeInput.value.trim() }) });
+    loadIssuesInteractive(id);
+  });
+  assigneeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') assigneeInput.blur(); });
+  assigneeDd.appendChild(assigneeInput);
+  dl.append(assigneeDt, assigneeDd);
+}
+
+function buildTrackerPushControls(issue, id, app) {
+  const pushBtn = document.createElement('button');
+  pushBtn.type = 'button';
+  pushBtn.className = 'secondary';
+  pushBtn.textContent = `Push to ${app.trackerType === 'jira' ? 'Jira' : 'GitHub'}`;
+  const pushStatus = document.createElement('span');
+  pushStatus.className = 'tracker-push-status';
+  pushBtn.addEventListener('click', async () => {
+    pushBtn.disabled = true;
+    pushStatus.textContent = 'Pushing…';
+    pushStatus.className = 'tracker-push-status';
+    try {
+      await api(`/${id}/issues/push-to-tracker`, { method: 'POST', body: JSON.stringify({ fingerprint: issue.fingerprint }) });
+      loadIssuesInteractive(id);
+    } catch (err) {
+      pushStatus.textContent = 'Error: ' + err.message;
+      pushStatus.className = 'tracker-push-status error';
+      pushBtn.disabled = false;
+    }
+  });
+  const frag = document.createDocumentFragment();
+  frag.append(pushBtn, document.createTextNode(' '), pushStatus);
+  return frag;
+}
+
+// Feature 15: push this issue to the app's configured external
+// tracker (GitHub Issues / Jira). Hidden entirely when no tracker is
+// configured; once linked, shows a link instead of a push button so
+// it can't be filed twice from here.
+function appendTrackerEntry(dl, issue, id, app) {
+  if (!app.trackerType || app.trackerType === 'none') return;
+  const trackerDt = document.createElement('dt');
+  trackerDt.textContent = 'Tracker';
+  const trackerDd = document.createElement('dd');
+  if (issue.triage.externalRef && issue.triage.externalRef.url) {
+    const link = document.createElement('a');
+    link.href = issue.triage.externalRef.url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = `View in ${issue.triage.externalRef.type === 'jira' ? 'Jira' : 'GitHub'} (${issue.triage.externalRef.id}) ↗`;
+    trackerDd.appendChild(link);
+  } else {
+    trackerDd.appendChild(buildTrackerPushControls(issue, id, app));
+  }
+  dl.append(trackerDt, trackerDd);
+}
+
+function appendFixPromptEntry(dl, issue) {
+  const fixDt = document.createElement('dt');
+  fixDt.textContent = 'Fix';
+  const fixDd = document.createElement('dd');
+  fixDd.appendChild(buildCopyPromptButton('Copy Claude Code Prompt', buildIssueFixPrompt(issue)));
+  dl.append(fixDt, fixDd);
+}
+
+function buildIssueDetailRow(issue, id, app, sourceValue) {
+  const detailTr = document.createElement('tr');
+  detailTr.className = 'issue-detail-row';
+  detailTr.dataset.source = sourceValue;
+  detailTr.hidden = true;
+  const detailTd = document.createElement('td');
+  detailTd.colSpan = 6;
+  const dl = buildIssueDetailEntries(issue);
+  appendAssigneeEntry(dl, issue, id);
+  appendTrackerEntry(dl, issue, id, app);
+  appendFixPromptEntry(dl, issue);
+  detailTd.appendChild(dl);
+  detailTr.appendChild(detailTd);
+  return detailTr;
+}
+
+function buildIssueRow(issue, table, id, app) {
+  const { tr, detailsBtn } = buildIssuePrimaryRow(issue, id);
+  table.appendChild(tr);
+
+  const detailTr = buildIssueDetailRow(issue, id, app, tr.dataset.source);
+  table.appendChild(detailTr);
+
+  detailsBtn.addEventListener('click', () => {
+    detailTr.hidden = !detailTr.hidden;
+    detailsBtn.textContent = detailTr.hidden ? 'Show details' : 'Hide details';
+  });
+}
+
+// Same category + same displayed file name reads as duplicate rows even
+// when the underlying files genuinely differ (e.g. five distinct route.ts
+// files under different directories, each individually flagged) — the File
+// column only ever shows the basename. Grouping by that same pair collapses
+// what would otherwise be N visually-identical rows into one, with the
+// individual (still individually triage-able) rows one click away.
+function groupIssuesForDisplay(issues) {
+  const groups = new Map();
+  for (const issue of issues) {
+    const key = issue.category + '|' + issue.file.split('/').pop();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(issue);
+  }
+  return [...groups.values()];
+}
+
+function buildIssueGroupRow(group, table, id, app, groupId) {
+  const worst = group.reduce((a, b) => (SEVERITY_RANK[b.severity] < SEVERITY_RANK[a.severity] ? b : a));
+  const basename = group[0].file.split('/').pop();
+  const sameSource = group.every((i) => (i.source || 'static') === (group[0].source || 'static'));
+
+  const groupTr = document.createElement('tr');
+  groupTr.className = 'issue-group-row';
+  groupTr.dataset.severity = worst.severity;
+  if (sameSource) groupTr.dataset.source = group[0].source || 'static';
+
+  const sevTd = document.createElement('td');
+  const sevBadge = document.createElement('span');
+  sevBadge.className = 'severity-badge ' + (SEVERITY_BADGE_CLASS[worst.severity] || 'severity-low');
+  sevBadge.textContent = worst.severity;
+  sevTd.appendChild(sevBadge);
+  groupTr.appendChild(sevTd);
+
+  const catTd = document.createElement('td');
+  catTd.className = 'cell-category';
+  catTd.textContent = group[0].category;
+  groupTr.appendChild(catTd);
+
+  const fileTd = document.createElement('td');
+  fileTd.className = 'cell-file';
+  fileTd.textContent = `${basename} (×${group.length})`;
+  groupTr.appendChild(fileTd);
+
+  groupTr.appendChild(document.createElement('td')); // Line varies per occurrence
+
+  const summaryTd = document.createElement('td');
+  summaryTd.className = 'cell-summary';
+  const groupToggle = document.createElement('button');
+  groupToggle.type = 'button';
+  groupToggle.className = 'link-button details-toggle';
+  groupToggle.textContent = `Show ${group.length} occurrences`;
+  summaryTd.appendChild(groupToggle);
+  summaryTd.appendChild(document.createTextNode(' '));
+  summaryTd.appendChild(buildCopyPromptButton('Copy Fix Prompt (All)', buildIssueGroupFixPrompt(group)));
+  groupTr.appendChild(summaryTd);
+
+  // Bulk triage: one action for the whole group instead of the per-finding
+  // dropdown N times — the exact "48 near-duplicate rows" problem this
+  // grouping was built to fix would otherwise just move from "read 48 rows"
+  // to "click 48 dropdowns".
+  const bulkTriageTd = document.createElement('td');
+  const bulkSelect = document.createElement('select');
+  bulkSelect.className = 'bulk-triage-select';
+  const bulkPlaceholder = document.createElement('option');
+  bulkPlaceholder.value = '';
+  bulkPlaceholder.textContent = `Set all ${group.length} to…`;
+  bulkSelect.appendChild(bulkPlaceholder);
+  for (const s of TRIAGE_STATES) {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    bulkSelect.appendChild(opt);
+  }
+  bulkSelect.addEventListener('change', async () => {
+    const state = bulkSelect.value;
+    if (!state) return;
+    await api(`/${id}/issues/triage-bulk`, { method: 'POST', body: JSON.stringify({ fingerprints: group.map((i) => i.fingerprint), state }) });
+    loadIssuesInteractive(id);
+  });
+  bulkTriageTd.appendChild(bulkSelect);
+  groupTr.appendChild(bulkTriageTd);
+  table.appendChild(groupTr);
+
+  const memberRows = [];
+  for (const issue of group) {
+    const before = table.rows.length;
+    buildIssueRow(issue, table, id, app);
+    for (let i = before; i < table.rows.length; i++) {
+      const row = table.rows[i];
+      row.hidden = true;
+      row.dataset.issueGroup = groupId;
+      memberRows.push(row);
+    }
+  }
+  groupToggle.addEventListener('click', () => {
+    const expand = memberRows[0].hidden;
+    for (const row of memberRows) {
+      // A member's own detail row stays collapsed even as the group opens —
+      // only that row's own "Show details" toggle should reveal it.
+      if (row.classList.contains('issue-detail-row')) continue;
+      row.hidden = !expand;
+    }
+    groupToggle.textContent = expand ? `Hide ${group.length} occurrences` : `Show ${group.length} occurrences`;
+  });
+}
+
 async function loadIssuesInteractive(id) {
   try {
     const [issues, app] = await Promise.all([api(`/${id}/issues`), api(`/${id}`)]);
@@ -2319,170 +3316,17 @@ async function loadIssuesInteractive(id) {
       withViewTransition(() => { wikiView.innerHTML = '<p>No issues recorded yet — run a scan first.</p>'; });
       return;
     }
-    const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
-    issues.sort((a, b) => order[a.severity] - order[b.severity]);
+    issues.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
     const table = document.createElement('table');
     table.className = 'issues-table fit-container';
     table.innerHTML = '<tr><th>Severity</th><th>Category</th><th>File</th><th>Line</th><th>Summary</th><th>Triage</th></tr>';
-    const SUMMARY_TRUNCATE_AT = 75;
-    for (const issue of issues) {
-      const tr = document.createElement('tr');
-      tr.dataset.source = issue.source || 'static';
-      if (issue.triage.state === 'false_positive' || issue.triage.state === 'fixed' || issue.suppressedByRule) tr.style.opacity = '0.5';
 
-      const severityTd = document.createElement('td');
-      const severityBadge = document.createElement('span');
-      severityBadge.className = 'severity-badge ' + (SEVERITY_BADGE_CLASS[issue.severity] || 'severity-low');
-      severityBadge.textContent = issue.severity;
-      severityTd.appendChild(severityBadge);
-      tr.appendChild(severityTd);
-
-      const categoryTd = document.createElement('td');
-      categoryTd.className = 'cell-category';
-      categoryTd.textContent = issue.category;
-      categoryTd.title = issue.category;
-      tr.appendChild(categoryTd);
-
-      const fileTd = document.createElement('td');
-      fileTd.className = 'cell-file';
-      fileTd.textContent = issue.file.split('/').pop();
-      fileTd.title = issue.file;
-      tr.appendChild(fileTd);
-
-      const lineTd = document.createElement('td');
-      lineTd.textContent = String(issue.line);
-      tr.appendChild(lineTd);
-
-      const summaryTd = document.createElement('td');
-      summaryTd.className = 'cell-summary';
-      const isLong = issue.summary.length > SUMMARY_TRUNCATE_AT;
-      const summarySpan = document.createElement('span');
-      summarySpan.textContent = isLong ? issue.summary.slice(0, SUMMARY_TRUNCATE_AT - 1).trimEnd() + '…' : issue.summary;
-      summaryTd.appendChild(summarySpan);
-      summaryTd.appendChild(document.createTextNode(' '));
-      const detailsBtn = document.createElement('button');
-      detailsBtn.type = 'button';
-      detailsBtn.className = 'link-button details-toggle';
-      detailsBtn.textContent = 'Show details';
-      summaryTd.appendChild(detailsBtn);
-      tr.appendChild(summaryTd);
-
-      const triageTd = document.createElement('td');
-      const select = document.createElement('select');
-      for (const s of TRIAGE_STATES) {
-        const opt = document.createElement('option');
-        opt.value = s;
-        opt.textContent = s;
-        if (s === issue.triage.state) opt.selected = true;
-        select.appendChild(opt);
-      }
-      select.addEventListener('change', async () => {
-        await api(`/${id}/issues/triage`, { method: 'POST', body: JSON.stringify({ fingerprint: issue.fingerprint, state: select.value }) });
-        loadIssuesInteractive(id);
-      });
-      triageTd.appendChild(select);
-      if (issue.suppressedByRule) {
-        const badge = document.createElement('div');
-        badge.className = 'override-badge';
-        badge.textContent = 'Auto-suppressed';
-        badge.title = 'Matches a Suppression Rule above — excluded from active counts and CI gating regardless of this triage state.';
-        triageTd.appendChild(badge);
-      }
-      if (issue.triage.assignee) {
-        const chip = document.createElement('div');
-        chip.className = 'assignee-chip';
-        chip.textContent = issue.triage.assignee;
-        chip.title = 'Assigned to ' + issue.triage.assignee;
-        triageTd.appendChild(chip);
-      }
-      tr.appendChild(triageTd);
-      table.appendChild(tr);
-
-      const detailTr = document.createElement('tr');
-      detailTr.className = 'issue-detail-row';
-      detailTr.dataset.source = tr.dataset.source;
-      detailTr.hidden = true;
-      const detailTd = document.createElement('td');
-      detailTd.colSpan = 6;
-      const dl = document.createElement('dl');
-      dl.className = 'issue-detail';
-      const addEntry = (term, value) => {
-        const dt = document.createElement('dt');
-        dt.textContent = term;
-        const dd = document.createElement('dd');
-        dd.textContent = value;
-        dl.append(dt, dd);
-      };
-      addEntry('File', issue.file);
-      addEntry('Summary', issue.summary);
-      if (issue.suggestedFix) addEntry('Suggested Fix', issue.suggestedFix);
-      if (issue.triage.note) addEntry('Triage Note', issue.triage.note);
-
-      const assigneeDt = document.createElement('dt');
-      assigneeDt.textContent = 'Assignee';
-      const assigneeDd = document.createElement('dd');
-      const assigneeInput = document.createElement('input');
-      assigneeInput.type = 'text';
-      assigneeInput.placeholder = 'Unassigned — add a person or team';
-      assigneeInput.value = issue.triage.assignee || '';
-      assigneeInput.addEventListener('blur', async () => {
-        if (assigneeInput.value === (issue.triage.assignee || '')) return;
-        await api(`/${id}/issues/assign`, { method: 'POST', body: JSON.stringify({ fingerprint: issue.fingerprint, assignee: assigneeInput.value.trim() }) });
-        loadIssuesInteractive(id);
-      });
-      assigneeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') assigneeInput.blur(); });
-      assigneeDd.appendChild(assigneeInput);
-      dl.append(assigneeDt, assigneeDd);
-
-      // Feature 15: push this issue to the app's configured external
-      // tracker (GitHub Issues / Jira). Hidden entirely when no tracker is
-      // configured; once linked, shows a link instead of a push button so
-      // it can't be filed twice from here.
-      if (app.trackerType && app.trackerType !== 'none') {
-        const trackerDt = document.createElement('dt');
-        trackerDt.textContent = 'Tracker';
-        const trackerDd = document.createElement('dd');
-        if (issue.triage.externalRef && issue.triage.externalRef.url) {
-          const link = document.createElement('a');
-          link.href = issue.triage.externalRef.url;
-          link.target = '_blank';
-          link.rel = 'noopener';
-          link.textContent = `View in ${issue.triage.externalRef.type === 'jira' ? 'Jira' : 'GitHub'} (${issue.triage.externalRef.id}) ↗`;
-          trackerDd.appendChild(link);
-        } else {
-          const pushBtn = document.createElement('button');
-          pushBtn.type = 'button';
-          pushBtn.className = 'secondary';
-          pushBtn.textContent = `Push to ${app.trackerType === 'jira' ? 'Jira' : 'GitHub'}`;
-          const pushStatus = document.createElement('span');
-          pushStatus.className = 'tracker-push-status';
-          pushBtn.addEventListener('click', async () => {
-            pushBtn.disabled = true;
-            pushStatus.textContent = 'Pushing…';
-            pushStatus.className = 'tracker-push-status';
-            try {
-              await api(`/${id}/issues/push-to-tracker`, { method: 'POST', body: JSON.stringify({ fingerprint: issue.fingerprint }) });
-              loadIssuesInteractive(id);
-            } catch (err) {
-              pushStatus.textContent = 'Error: ' + err.message;
-              pushStatus.className = 'tracker-push-status error';
-              pushBtn.disabled = false;
-            }
-          });
-          trackerDd.append(pushBtn, document.createTextNode(' '), pushStatus);
-        }
-        dl.append(trackerDt, trackerDd);
-      }
-
-      detailTd.appendChild(dl);
-      detailTr.appendChild(detailTd);
-      table.appendChild(detailTr);
-
-      detailsBtn.addEventListener('click', () => {
-        detailTr.hidden = !detailTr.hidden;
-        detailsBtn.textContent = detailTr.hidden ? 'Show details' : 'Hide details';
-      });
+    let groupSeq = 0;
+    for (const group of groupIssuesForDisplay(issues)) {
+      if (group.length === 1) buildIssueRow(group[0], table, id, app);
+      else buildIssueGroupRow(group, table, id, app, `issue-group-${groupSeq++}`);
     }
+
     withViewTransition(() => {
       wikiView.innerHTML = '<h2>Issues</h2><p>Setting a finding to "false_positive" or "fixed" removes it from the active count and CLI severity gating on the next scan.</p>';
 
@@ -2502,6 +3346,11 @@ async function loadIssuesInteractive(id) {
       sourceSelect.addEventListener('change', () => {
         const filter = sourceSelect.value;
         for (const row of table.querySelectorAll('tr[data-source]')) {
+          // Grouped members are governed by their group's toggle, not this
+          // filter directly — filtering the (ungrouped) top-level rows and
+          // group headers is enough; a filtered-out group's members stay
+          // reachable only by first expanding a header that itself matched.
+          if (row.dataset.issueGroup) continue;
           const matches = !filter || row.dataset.source === filter;
           row.hidden = !matches;
           if (!matches && row.classList.contains('issue-detail-row') === false) {
@@ -2538,7 +3387,16 @@ async function loadDictionaryInteractive(id) {
       wikiView.innerHTML = '<h2>Data Dictionary</h2><p>Edit a description and click away (or press Enter) to save. Your edits survive future rescans.</p>';
       for (const model of models) {
         const section = document.createElement('div');
-        section.innerHTML = `<h3>${model.name}</h3><p style="color:var(--muted);font-size:0.85rem">${model.source} — <code>${model.file}</code></p>`;
+        const modelHeading = document.createElement('h3');
+        modelHeading.textContent = model.name;
+        const modelMeta = document.createElement('p');
+        modelMeta.style.color = 'var(--muted)';
+        modelMeta.style.fontSize = '0.85rem';
+        modelMeta.append(model.source + ' — ');
+        const modelFileCode = document.createElement('code');
+        modelFileCode.textContent = model.file;
+        modelMeta.appendChild(modelFileCode);
+        section.append(modelHeading, modelMeta);
         const table = document.createElement('table');
         table.innerHTML = '<tr><th>Field</th><th>Type</th><th>Description</th></tr>';
         for (const f of model.fields) {
@@ -2817,7 +3675,9 @@ async function loadProcessFlowsView(id) {
       wikiView.innerHTML = '<h2>Process Flows</h2><p style="color:var(--muted);font-size:0.85rem">Each lane traces one route from the app\'s entry point through its handler to a response — hover a box for the full step text. Blue-bordered boxes are detected data/network side effects; green/amber-bordered boxes show whether the handler actually sent a response.</p>';
       for (const group of data.groups) {
         const section = document.createElement('div');
-        section.innerHTML = `<h3>${group.name} (${group.routes.length} route${group.routes.length === 1 ? '' : 's'})</h3>`;
+        const groupHeading = document.createElement('h3');
+        groupHeading.textContent = `${group.name} (${group.routes.length} route${group.routes.length === 1 ? '' : 's'})`;
+        section.appendChild(groupHeading);
         const scroll = document.createElement('div');
         scroll.className = 'table-scroll';
         scroll.appendChild(renderProcessFlowDiagram(data.entryPoints, group));
@@ -3322,7 +4182,7 @@ function escapeHtmlText(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function highlightQuery(snippet, query) {
+function escapeAndHighlightQuery(snippet, query) {
   const escaped = escapeHtmlText(snippet);
   const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
   return escaped.replace(re, (m) => `<mark>${m}</mark>`);
@@ -3350,7 +4210,7 @@ async function runWikiSearch(id, query) {
         for (const m of r.matches) {
           const p = document.createElement('p');
           p.className = 'search-snippet';
-          p.innerHTML = `L${m.line}: ${highlightQuery(m.snippet, query)}`;
+          p.innerHTML = `L${m.line}: ${escapeAndHighlightQuery(m.snippet, query)}`;
           div.appendChild(p);
         }
         wikiView.appendChild(div);
@@ -3368,14 +4228,21 @@ wikiSearchForm.addEventListener('submit', (e) => {
   if (q) runWikiSearch(currentDetailId, q);
 });
 
-closeDetailBtn.addEventListener('click', () => {
+// Shared by the brand mark, the breadcrumb's "Home" link, and (formerly) six
+// separate "← Back to list" buttons, one per subpage — all of them mean the
+// same thing: leave whatever subpage/detail view is open and land on the
+// literal top of the page (header + Portfolio Overview + list), not just the
+// list panel scrolled to its own top edge, so this overrides showOnly's own
+// scroll target.
+function goHome() {
   closeScanStream();
-  withViewTransition(() => {
-    detailPanel.hidden = true;
-    listPanel.hidden = false;
-  });
+  withViewTransition(() => showOnly(listPanel));
   currentDetailId = null;
-});
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+brandHomeLink.addEventListener('click', (e) => { e.preventDefault(); goHome(); });
+breadcrumbHome.addEventListener('click', (e) => { e.preventDefault(); goHome(); });
 
 // ---- Minimal markdown renderer ----
 
@@ -3410,61 +4277,89 @@ function inlineFormat(text, baseDir, appId) {
   return out;
 }
 
+// ---- renderMarkdown line handlers ----
+// Split out of renderMarkdown (was one function with cyclomatic complexity
+// 16 — every line type's detection logic in one if/else-if chain). Each
+// tryX below inspects one line, mutates the shared `state`, and returns
+// true if it consumed the line (equivalent to the original's `continue`).
+// Order matters and mirrors the original exactly, including the two
+// state-transitions that aren't tied to a "did we handle it" return value:
+// tryTableRow closes a still-open table on the first non-table line, and
+// closeMarkdownList runs for every line that reaches past the list check.
+
+function closeMarkdownList(state) {
+  if (state.listOpen) { state.html.push('</ul>'); state.listOpen = false; }
+}
+
+function tryCodeFence(line, state) {
+  if (!line.startsWith('```')) return false;
+  state.inCode = !state.inCode;
+  state.html.push(state.inCode ? '<pre><code>' : '</code></pre>');
+  return true;
+}
+
+function tryCodeLine(line, state) {
+  if (!state.inCode) return false;
+  state.html.push(escapeHtml(line));
+  return true;
+}
+
+function tryTableRow(line, state, baseDir, appId) {
+  if (!/^\s*\|.*\|\s*$/.test(line)) {
+    if (state.inTable) { state.html.push('</table>', '</div>'); state.inTable = false; }
+    return false;
+  }
+  const cells = line.trim().slice(1, -1).split('|').map((c) => c.trim());
+  if (cells.every((c) => /^-+$/.test(c))) return true; // separator row
+  if (!state.inTable) { state.html.push('<div class="table-scroll">', '<table>'); state.inTable = true; }
+  const tag = state.html[state.html.length - 1] === '<table>' ? 'th' : 'td';
+  state.html.push('<tr>' + cells.map((c) => `<${tag}>${inlineFormat(c, baseDir, appId)}</${tag}>`).join('') + '</tr>');
+  return true;
+}
+
+function tryHeading(line, state, baseDir, appId) {
+  const h = line.match(/^(#{1,3})\s+(.*)$/);
+  if (!h) return false;
+  closeMarkdownList(state);
+  const level = h[1].length;
+  state.html.push(`<h${level}>${inlineFormat(h[2], baseDir, appId)}</h${level}>`);
+  return true;
+}
+
+function tryListItem(line, state, baseDir, appId) {
+  if (!/^-\s+/.test(line)) return false;
+  if (!state.listOpen) { state.html.push('<ul>'); state.listOpen = true; }
+  state.html.push(`<li>${inlineFormat(line.replace(/^-\s+/, ''), baseDir, appId)}</li>`);
+  return true;
+}
+
+function tryHrOrBlank(line, state) {
+  if (line.trim() === '---') { state.html.push('<hr>'); return true; }
+  if (line.trim() === '') { state.html.push(''); return true; }
+  return false;
+}
+
 function renderMarkdown(md, baseDir, appId) {
-  const lines = md.split('\n');
-  const html = [];
-  let inTable = false;
-  let inCode = false;
-  let listOpen = false;
+  const state = { inTable: false, inCode: false, listOpen: false, html: [] };
 
-  const closeList = () => { if (listOpen) { html.push('</ul>'); listOpen = false; } };
-
-  for (const raw of lines) {
+  for (const raw of md.split('\n')) {
     const line = raw.replace(/\r$/, '');
 
-    if (line.startsWith('```')) {
-      inCode = !inCode;
-      html.push(inCode ? '<pre><code>' : '</code></pre>');
-      continue;
-    }
-    if (inCode) { html.push(escapeHtml(line)); continue; }
+    if (tryCodeFence(line, state)) continue;
+    if (tryCodeLine(line, state)) continue;
+    if (tryTableRow(line, state, baseDir, appId)) continue;
+    if (tryHeading(line, state, baseDir, appId)) continue;
+    if (tryListItem(line, state, baseDir, appId)) continue;
+    closeMarkdownList(state);
 
-    if (/^\s*\|.*\|\s*$/.test(line)) {
-      const cells = line.trim().slice(1, -1).split('|').map((c) => c.trim());
-      if (cells.every((c) => /^-+$/.test(c))) continue; // separator row
-      if (!inTable) { html.push('<div class="table-scroll">', '<table>'); inTable = true; }
-      const tag = html[html.length - 1] === '<table>' ? 'th' : 'td';
-      html.push('<tr>' + cells.map((c) => `<${tag}>${inlineFormat(c, baseDir, appId)}</${tag}>`).join('') + '</tr>');
-      continue;
-    } else if (inTable) {
-      html.push('</table>', '</div>');
-      inTable = false;
-    }
+    if (tryHrOrBlank(line, state)) continue;
 
-    const h = line.match(/^(#{1,3})\s+(.*)$/);
-    if (h) {
-      closeList();
-      const level = h[1].length;
-      html.push(`<h${level}>${inlineFormat(h[2], baseDir, appId)}</h${level}>`);
-      continue;
-    }
-
-    if (/^-\s+/.test(line)) {
-      if (!listOpen) { html.push('<ul>'); listOpen = true; }
-      html.push(`<li>${inlineFormat(line.replace(/^-\s+/, ''), baseDir, appId)}</li>`);
-      continue;
-    }
-    closeList();
-
-    if (line.trim() === '---') { html.push('<hr>'); continue; }
-    if (line.trim() === '') { html.push(''); continue; }
-
-    html.push(`<p>${inlineFormat(line, baseDir, appId)}</p>`);
+    state.html.push(`<p>${inlineFormat(line, baseDir, appId)}</p>`);
   }
-  closeList();
-  if (inTable) html.push('</table>', '</div>');
+  closeMarkdownList(state);
+  if (state.inTable) state.html.push('</table>', '</div>');
 
-  return html.join('\n');
+  return state.html.join('\n');
 }
 
 wikiView.addEventListener('click', (e) => {

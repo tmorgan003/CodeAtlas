@@ -37,6 +37,43 @@ Options:
 `);
 }
 
+// Resolves a repo URL (cloning it) or a local path to a { localPath, appId,
+// resolvedRef } triple. Split out of main() — was one of the two biggest
+// contributors to its cyclomatic complexity (15).
+async function resolveScanTarget(opts, log) {
+  if (isRepoLink(opts.target)) {
+    const appId = `cli-${crypto.createHash('sha1').update(opts.target).digest('hex').slice(0, 12)}`;
+    log(opts.ref ? `Cloning ${opts.target} at ${opts.ref}...` : `Cloning ${opts.target}...`);
+    const cloned = await cloneRepo(appId, opts.target, opts.ref);
+    log(`Checked out ${cloned.branch ? `branch ${cloned.branch} @ ` : ''}${cloned.commit}`);
+    return { localPath: cloned.path, appId, resolvedRef: cloned };
+  }
+  const localPath = path.resolve(opts.target);
+  const appId = `cli-${crypto.createHash('sha1').update(localPath).digest('hex').slice(0, 12)}`;
+  return { localPath, appId, resolvedRef: null };
+}
+
+function countBySeverity(issues) {
+  const bySeverity = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  for (const issue of issues) bySeverity[issue.severity] = (bySeverity[issue.severity] || 0) + 1;
+  return bySeverity;
+}
+
+function printCliSummary(summary, bySeverity, opts) {
+  if (opts.json) {
+    console.log(JSON.stringify(summary, null, 2));
+    return;
+  }
+  console.log('');
+  console.log(`Scan complete: ${summary.name}`);
+  console.log(`  Wiki: ${summary.wikiPath}`);
+  console.log(`  Units: ${summary.stats.units}  Models: ${summary.stats.models}  Routes: ${summary.stats.routes}  Issues: ${summary.stats.issues}`);
+  console.log(`  By severity: Critical=${bySeverity.Critical} High=${bySeverity.High} Medium=${bySeverity.Medium} Low=${bySeverity.Low}`);
+  console.log(summary.failed
+    ? `  FAILED — issue(s) at or above "${opts.failOn}" severity were found.`
+    : `  PASSED — no issues at or above "${opts.failOn}" severity.`);
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (!opts.target) {
@@ -50,25 +87,14 @@ async function main() {
 
   const log = (msg) => { if (!opts.json) console.log(msg); };
 
-  let localPath = opts.target;
-  let appId;
-  let resolvedRef = null;
-  if (isRepoLink(opts.target)) {
-    appId = `cli-${crypto.createHash('sha1').update(opts.target).digest('hex').slice(0, 12)}`;
-    log(opts.ref ? `Cloning ${opts.target} at ${opts.ref}...` : `Cloning ${opts.target}...`);
-    try {
-      const cloned = await cloneRepo(appId, opts.target, opts.ref);
-      localPath = cloned.path;
-      resolvedRef = cloned;
-      log(`Checked out ${cloned.branch ? `branch ${cloned.branch} @ ` : ''}${cloned.commit}`);
-    } catch (err) {
-      console.error(`Failed to clone repo: ${err.message}`);
-      process.exit(2);
-    }
-  } else {
-    localPath = path.resolve(opts.target);
-    appId = `cli-${crypto.createHash('sha1').update(localPath).digest('hex').slice(0, 12)}`;
+  let target;
+  try {
+    target = await resolveScanTarget(opts, log);
+  } catch (err) {
+    console.error(`Failed to clone repo: ${err.message}`);
+    process.exit(2);
   }
+  const { localPath, appId, resolvedRef } = target;
 
   const name = opts.name || path.basename(localPath);
 
@@ -80,9 +106,7 @@ async function main() {
     process.exit(2);
   }
 
-  const bySeverity = { Critical: 0, High: 0, Medium: 0, Low: 0 };
-  for (const issue of result.issuesList) bySeverity[issue.severity] = (bySeverity[issue.severity] || 0) + 1;
-
+  const bySeverity = countBySeverity(result.issuesList);
   const threshold = SEVERITY_ORDER[opts.failOn];
   const shouldFail = result.issuesList.some((i) => SEVERITY_ORDER[i.severity] <= threshold);
 
@@ -97,18 +121,7 @@ async function main() {
     failed: shouldFail,
   };
 
-  if (opts.json) {
-    console.log(JSON.stringify(summary, null, 2));
-  } else {
-    console.log('');
-    console.log(`Scan complete: ${name}`);
-    console.log(`  Wiki: ${summary.wikiPath}`);
-    console.log(`  Units: ${result.stats.units}  Models: ${result.stats.models}  Routes: ${result.stats.routes}  Issues: ${result.stats.issues}`);
-    console.log(`  By severity: Critical=${bySeverity.Critical} High=${bySeverity.High} Medium=${bySeverity.Medium} Low=${bySeverity.Low}`);
-    console.log(shouldFail
-      ? `  FAILED — issue(s) at or above "${opts.failOn}" severity were found.`
-      : `  PASSED — no issues at or above "${opts.failOn}" severity.`);
-  }
+  printCliSummary(summary, bySeverity, opts);
 
   process.exit(shouldFail ? 1 : 0);
 }

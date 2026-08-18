@@ -12,6 +12,7 @@ data/ignore-patterns/
 data/mask-rules/
 data/custom-wiki-sections/
 data/suppression-rules/
+data/suppression-audit-log.json
 data/onboarding/
 data/wiki-overrides/
 data/graphs/

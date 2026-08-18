@@ -12,6 +12,7 @@ const customIgnore = require('../scanner/customIgnore');
 const customSecretRules = require('../scanner/customSecretRules');
 const customWikiSections = require('../scanner/customWikiSections');
 const suppressionRules = require('../scanner/suppressionRules');
+const auditLog = require('../scanner/auditLog');
 const onboarding = require('../scanner/onboarding');
 const wikiOverrides = require('../scanner/wikiOverrides');
 const { resolveWikiFile } = require('../scanner/wikiFileResolver');
@@ -100,6 +101,60 @@ router.get('/dashboard', (req, res) => {
     totalApps: apps.length, byStatus, byEnvironment, bySeverity, totalActiveIssues, staleApps, staleDaysThreshold: STALE_DAYS,
     slowApps, avgDurationMs,
   });
+});
+
+// Trend visibility: the dashboard above is a snapshot only — this answers
+// "is the portfolio improving or drifting" by replaying each app's scan
+// history (history.js already saves one snapshot per scan) against TODAY's
+// triage/suppression state, so a since-dismissed finding doesn't inflate a
+// past day's count. Bucketed by calendar day (apps scan independently, on
+// their own schedules, so there's no single shared "scan N" to plot
+// against) rather than by raw scan event. Registered before /:id like the
+// other list-level routes above.
+router.get('/dashboard/trend', (req, res) => {
+  const DAYS = 14;
+  const apps = db.loadAll().filter((a) => !a.archived);
+
+  const perApp = apps.map((app) => {
+    const snapshots = history.loadSnapshots(app.id);
+    const triageMap = triage.loadTriage(app.id);
+    const rules = suppressionRules.loadRules(app.id);
+    return { app, snapshots, triageMap, rules };
+  });
+
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  const points = [];
+  for (let d = DAYS - 1; d >= 0; d--) {
+    const dayEnd = new Date(today.getTime() - d * 86400000);
+    const bySeverity = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+    for (const { snapshots, triageMap, rules } of perApp) {
+      let latest = null;
+      for (const snap of snapshots) {
+        if (new Date(snap.scannedAt).getTime() <= dayEnd.getTime()) latest = snap;
+        else break; // filenames (and therefore array order from loadSnapshots) sort ascending by scannedAt
+      }
+      if (!latest) continue;
+      for (const issue of latest.issues) {
+        if (triage.isDismissed(triageMap, issue, rules)) continue;
+        bySeverity[issue.severity] = (bySeverity[issue.severity] || 0) + 1;
+      }
+    }
+    const total = bySeverity.Critical + bySeverity.High + bySeverity.Medium + bySeverity.Low;
+    points.push({ date: dayEnd.toISOString().slice(0, 10), bySeverity, total });
+  }
+
+  const weekAgo = Date.now() - 7 * 86400000;
+  let resolvedThisWeek = 0;
+  for (const { snapshots } of perApp) {
+    for (let i = 1; i < snapshots.length; i++) {
+      if (new Date(snapshots[i].scannedAt).getTime() < weekAgo) continue;
+      const diff = history.diffSnapshots(snapshots[i - 1], snapshots[i]);
+      if (diff) resolvedThisWeek += diff.resolvedIssues.length;
+    }
+  }
+
+  res.json({ points, resolvedThisWeek });
 });
 
 // Portfolio scan calendar: when is every app next due for an auto-rescan.
@@ -296,6 +351,16 @@ router.get('/tags', (req, res) => {
   res.json(tags);
 });
 
+// Global audit trail — who suppressed what, when, and why, across every
+// app. Read-only; nothing writes to this except addRule/removeRule
+// themselves, so it can't be edited or backfilled after the fact. A
+// single-segment list-level route, registered before /:id for the same
+// reason as /tags, /calendar, /issues above.
+router.get('/suppression-audit-log', (req, res) => {
+  const log = auditLog.loadAuditLog().slice().reverse();
+  res.json(log);
+});
+
 router.patch('/tags/:tag', (req, res) => {
   const oldTag = req.params.tag;
   const newTag = (req.body && req.body.newTag || '').trim();
@@ -367,56 +432,104 @@ router.post('/', (req, res) => {
   res.status(201).json(entry);
 });
 
+// PATCH /:id field handling split into small, independent helpers — one
+// route handler validating and assigning ~20 orthogonal fields inline had
+// climbed to a cyclomatic complexity of 41. Each helper below owns one
+// concern group and mutates `patch` directly; the route handler just wires
+// them together in order.
+
+// RBAC: Deep scan and CI Gate Severity changes are admin-only, same as at
+// creation time.
+function checkPatchRbac(body, app, role) {
+  if (body.scanMode === 'deep' && app.scanMode !== 'deep' && role !== 'admin') {
+    return 'Deep scan requires the "admin" role — log in as an admin, or leave Scan Mode as Static.';
+  }
+  if (body.failOnSeverity !== undefined && body.failOnSeverity !== app.failOnSeverity && role !== 'admin') {
+    return 'Changing the CI Gate Severity requires the "admin" role.';
+  }
+  return null;
+}
+
+function buildIdentityPatch(body, patch) {
+  if (body.name !== undefined) {
+    if (!body.name.trim()) return 'name cannot be blank';
+    patch.name = body.name;
+  }
+  if (body.pathOrRepo !== undefined) {
+    if (!body.pathOrRepo.trim()) return 'pathOrRepo cannot be blank';
+    patch.pathOrRepo = body.pathOrRepo;
+  }
+  return null;
+}
+
+function buildOwnerPatch(body, patch) {
+  if (body.owner === undefined) return null;
+  if (body.owner && !owners.isValid(body.owner)) {
+    return `Unknown owner "${body.owner}" — add it via Manage Owners first, or leave this blank.`;
+  }
+  patch.owner = body.owner;
+  return null;
+}
+
+function buildGateAndTrackerTypePatch(body, patch) {
+  if (body.notifySeverity !== undefined) {
+    if (!db.GATE_SEVERITIES.has(body.notifySeverity)) return `notifySeverity must be one of: ${[...db.GATE_SEVERITIES].join(', ')}`;
+    patch.notifySeverity = body.notifySeverity;
+  }
+  if (body.failOnSeverity !== undefined) {
+    if (!db.GATE_SEVERITIES.has(body.failOnSeverity)) return `failOnSeverity must be one of: ${[...db.GATE_SEVERITIES].join(', ')}`;
+    patch.failOnSeverity = body.failOnSeverity;
+  }
+  if (body.trackerType !== undefined) {
+    if (!['none', 'github', 'jira'].includes(body.trackerType)) return 'trackerType must be one of: none, github, jira';
+    patch.trackerType = body.trackerType;
+  }
+  return null;
+}
+
+// Plain pass-through fields — no validation, just "if present, copy it over".
+function buildPassthroughFieldsPatch(body, patch) {
+  if (body.purpose !== undefined) patch.purpose = body.purpose;
+  if (body.environment !== undefined) patch.environment = body.environment;
+  if (body.techStack !== undefined) patch.techStack = body.techStack;
+  if (body.notes !== undefined) patch.notes = body.notes;
+  if (body.notifyWebhookUrl !== undefined) patch.notifyWebhookUrl = body.notifyWebhookUrl;
+  if (body.digestEnabled !== undefined) patch.digestEnabled = !!body.digestEnabled;
+  if (body.trackerBaseUrl !== undefined) patch.trackerBaseUrl = body.trackerBaseUrl;
+  if (body.trackerProjectOrRepo !== undefined) patch.trackerProjectOrRepo = body.trackerProjectOrRepo;
+  if (body.trackerEmail !== undefined) patch.trackerEmail = body.trackerEmail;
+  if (body.trackerToken !== undefined) patch.trackerToken = body.trackerToken;
+  if (body.gitRef !== undefined) patch.gitRef = body.gitRef;
+  if (body.archived !== undefined) patch.archived = !!body.archived;
+}
+
+// Fields that need a small transform on the way in, not just validation.
+function buildTransformedFieldsPatch(body, patch) {
+  if (body.scanMode !== undefined) patch.scanMode = body.scanMode === 'deep' ? 'deep' : 'static';
+  if (body.tags !== undefined) patch.tags = Array.isArray(body.tags) ? body.tags : String(body.tags).split(',').map((t) => t.trim()).filter(Boolean);
+  if (body.scheduleMinutes !== undefined) patch.scheduleMinutes = Number(body.scheduleMinutes) > 0 ? Number(body.scheduleMinutes) : 0;
+}
+
 router.patch('/:id', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
-  const {
-    purpose, owner, environment, techStack, notes, scanMode, tags, scheduleMinutes, notifyWebhookUrl, notifySeverity,
-    failOnSeverity, digestEnabled, trackerType, trackerBaseUrl, trackerProjectOrRepo, trackerEmail, trackerToken, gitRef,
-    archived,
-  } = req.body || {};
-  // RBAC: same admin-only gate as creation, for the same two settings.
+  const body = req.body || {};
   const role = req.user ? req.user.role : 'viewer';
-  if (scanMode === 'deep' && app.scanMode !== 'deep' && role !== 'admin') {
-    return res.status(403).json({ error: 'Deep scan requires the "admin" role — log in as an admin, or leave Scan Mode as Static.' });
-  }
-  if (failOnSeverity !== undefined && failOnSeverity !== app.failOnSeverity && role !== 'admin') {
-    return res.status(403).json({ error: 'Changing the CI Gate Severity requires the "admin" role.' });
-  }
+
+  const rbacError = checkPatchRbac(body, app, role);
+  if (rbacError) return res.status(403).json({ error: rbacError });
+
   const patch = {};
-  if (purpose !== undefined) patch.purpose = purpose;
-  if (owner !== undefined) {
-    if (owner && !owners.isValid(owner)) {
-      return res.status(400).json({ error: `Unknown owner "${owner}" — add it via Manage Owners first, or leave this blank.` });
-    }
-    patch.owner = owner;
-  }
-  if (environment !== undefined) patch.environment = environment;
-  if (techStack !== undefined) patch.techStack = techStack;
-  if (notes !== undefined) patch.notes = notes;
-  if (scanMode !== undefined) patch.scanMode = scanMode === 'deep' ? 'deep' : 'static';
-  if (tags !== undefined) patch.tags = Array.isArray(tags) ? tags : String(tags).split(',').map((t) => t.trim()).filter(Boolean);
-  if (scheduleMinutes !== undefined) patch.scheduleMinutes = Number(scheduleMinutes) > 0 ? Number(scheduleMinutes) : 0;
-  if (notifyWebhookUrl !== undefined) patch.notifyWebhookUrl = notifyWebhookUrl;
-  if (notifySeverity !== undefined) {
-    if (!db.GATE_SEVERITIES.has(notifySeverity)) return res.status(400).json({ error: `notifySeverity must be one of: ${[...db.GATE_SEVERITIES].join(', ')}` });
-    patch.notifySeverity = notifySeverity;
-  }
-  if (failOnSeverity !== undefined) {
-    if (!db.GATE_SEVERITIES.has(failOnSeverity)) return res.status(400).json({ error: `failOnSeverity must be one of: ${[...db.GATE_SEVERITIES].join(', ')}` });
-    patch.failOnSeverity = failOnSeverity;
-  }
-  if (digestEnabled !== undefined) patch.digestEnabled = !!digestEnabled;
-  if (trackerType !== undefined) {
-    if (!['none', 'github', 'jira'].includes(trackerType)) return res.status(400).json({ error: 'trackerType must be one of: none, github, jira' });
-    patch.trackerType = trackerType;
-  }
-  if (trackerBaseUrl !== undefined) patch.trackerBaseUrl = trackerBaseUrl;
-  if (trackerProjectOrRepo !== undefined) patch.trackerProjectOrRepo = trackerProjectOrRepo;
-  if (trackerEmail !== undefined) patch.trackerEmail = trackerEmail;
-  if (trackerToken !== undefined) patch.trackerToken = trackerToken;
-  if (gitRef !== undefined) patch.gitRef = gitRef;
-  if (archived !== undefined) patch.archived = !!archived;
+  const validationError = [
+    buildIdentityPatch(body, patch),
+    buildOwnerPatch(body, patch),
+    buildGateAndTrackerTypePatch(body, patch),
+  ].find((e) => e);
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  buildPassthroughFieldsPatch(body, patch);
+  buildTransformedFieldsPatch(body, patch);
+
   const updated = db.update(app.id, patch);
   res.json(updated);
 });
@@ -557,9 +670,9 @@ router.get('/:id/suppression-rules', (req, res) => {
 router.post('/:id/suppression-rules', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
-  const { category, filePattern, note } = req.body || {};
+  const { category, filePattern, reason, expiresAt } = req.body || {};
   try {
-    res.status(201).json(suppressionRules.addRule(app.id, { category, filePattern, note }));
+    res.status(201).json(suppressionRules.addRule(app.id, { category, filePattern, reason, expiresAt }, req.user ? req.user.username : null));
   } catch (err) {
     res.status(400).json({ error: String((err && err.message) || err) });
   }
@@ -568,7 +681,7 @@ router.post('/:id/suppression-rules', (req, res) => {
 router.delete('/:id/suppression-rules/:ruleId', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
-  res.json(suppressionRules.removeRule(app.id, req.params.ruleId));
+  res.json(suppressionRules.removeRule(app.id, req.params.ruleId, req.user ? req.user.username : null));
 });
 
 // Feature 15: push a single issue to the app's configured external tracker
@@ -599,6 +712,20 @@ router.post('/:id/issues/triage', (req, res) => {
   if (!triage.VALID_STATES.has(state)) return res.status(400).json({ error: `state must be one of: ${[...triage.VALID_STATES].join(', ')}` });
   const entry = triage.setTriageState(app.id, fingerprint, state, note);
   res.json(entry);
+});
+
+// Signal vs. noise: a collapsed duplicate-finding group (see app.js's
+// groupIssuesForDisplay) can be dozens of occurrences of the same rule —
+// this sets every one of them in a single request instead of requiring the
+// per-finding dropdown N times.
+router.post('/:id/issues/triage-bulk', (req, res) => {
+  const app = db.getById(req.params.id);
+  if (!app) return res.status(404).json({ error: 'App not found' });
+  const { fingerprints, state } = req.body || {};
+  if (!Array.isArray(fingerprints) || !fingerprints.length) return res.status(400).json({ error: 'fingerprints (non-empty array) is required' });
+  if (!triage.VALID_STATES.has(state)) return res.status(400).json({ error: `state must be one of: ${[...triage.VALID_STATES].join(', ')}` });
+  const entries = fingerprints.map((fp) => triage.setTriageState(app.id, fp, state));
+  res.json({ updated: entries.length });
 });
 
 // Feature 5: assign a person/team to a finding, independent of triage state.
@@ -675,8 +802,8 @@ router.get('/:id/onboarding', (req, res) => {
 router.patch('/:id/onboarding', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
-  const { techStackConfirmed, firstScanReviewed } = req.body || {};
-  onboarding.setState(app.id, { techStackConfirmed, firstScanReviewed });
+  const { ciGateAcknowledged, suppressionAcknowledged } = req.body || {};
+  onboarding.setState(app.id, { ciGateAcknowledged, suppressionAcknowledged });
   res.json(onboarding.buildChecklist(app));
 });
 
@@ -749,30 +876,18 @@ router.get('/:id/ignore-patterns', (req, res) => {
 router.post('/:id/ignore-patterns', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
-  const { pattern } = req.body || {};
+  const { pattern, reason, expiresAt } = req.body || {};
   try {
-    res.status(201).json(customIgnore.addPattern(app.id, pattern));
+    res.status(201).json(customIgnore.addPattern(app.id, { pattern, reason, expiresAt }, req.user ? req.user.username : null));
   } catch (err) {
     res.status(400).json({ error: String((err && err.message) || err) });
   }
 });
 
-router.patch('/:id/ignore-patterns', (req, res) => {
+router.delete('/:id/ignore-patterns/:patternId', (req, res) => {
   const app = db.getById(req.params.id);
   if (!app) return res.status(404).json({ error: 'App not found' });
-  const { oldPattern, newPattern } = req.body || {};
-  if (!oldPattern) return res.status(400).json({ error: 'oldPattern is required' });
-  try {
-    res.json(customIgnore.renamePattern(app.id, oldPattern, newPattern));
-  } catch (err) {
-    res.status(400).json({ error: String((err && err.message) || err) });
-  }
-});
-
-router.delete('/:id/ignore-patterns/:pattern', (req, res) => {
-  const app = db.getById(req.params.id);
-  if (!app) return res.status(404).json({ error: 'App not found' });
-  res.json(customIgnore.removePattern(app.id, req.params.pattern));
+  res.json(customIgnore.removePattern(app.id, req.params.patternId, req.user ? req.user.username : null));
 });
 
 // Feature: masking rules UI — per-app custom secret-detection regex

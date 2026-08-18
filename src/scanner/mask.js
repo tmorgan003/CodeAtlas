@@ -50,17 +50,77 @@ function consumeRegexLiteral(content, start) {
   return i;
 }
 
+// Each tryX below attempts to consume one span type starting at `i` and
+// returns { type, end, lastSignificant? } on a match, or null to let
+// tokenize() try the next span type. Splitting these out (mirroring the
+// pre-existing consumeRegexLiteral) is what took tokenize() from a single
+// 29-branch loop down to a short dispatch loop — the branch count didn't
+// disappear, it just moved into these small, independently-readable
+// functions instead of one long if-chain.
+
+function tryLineComment(content, i, flags) {
+  if (!flags.isJsLike || content.slice(i, i + 2) !== '//') return null;
+  const n = content.length;
+  let j = i;
+  while (j < n && content[j] !== '\n') j++;
+  return { type: 'comment', end: j };
+}
+
+function tryBlockComment(content, i, flags) {
+  if (!flags.isJsLike || content.slice(i, i + 2) !== '/*') return null;
+  let j = content.indexOf('*/', i + 2);
+  j = j === -1 ? content.length : j + 2;
+  return { type: 'comment', end: j };
+}
+
+function tryPythonComment(content, i, flags) {
+  if (!flags.isPython || content[i] !== '#') return null;
+  const n = content.length;
+  let j = i;
+  while (j < n && content[j] !== '\n') j++;
+  return { type: 'comment', end: j };
+}
+
+function tryPythonTripleQuote(content, i, flags) {
+  if (!flags.isPython) return null;
+  const three = content.slice(i, i + 3);
+  if (three !== '"""' && three !== "'''") return null;
+  let j = content.indexOf(three, i + 3);
+  j = j === -1 ? content.length : j + 3;
+  return { type: 'comment', end: j };
+}
+
+function tryRegexLiteral(content, i, flags) {
+  if (!flags.isJsLike || content[i] !== '/' || !looksLikeRegexStart(content, i, flags.lastSignificant)) return null;
+  const end = consumeRegexLiteral(content, i);
+  if (end === null) return null;
+  return { type: 'regex', end, lastSignificant: '/' };
+}
+
+function tryStringOrTemplate(content, i) {
+  const ch = content[i];
+  if (ch !== '"' && ch !== "'" && ch !== '`') return null;
+  const n = content.length;
+  let j = i + 1;
+  while (j < n && content[j] !== ch) {
+    if (content[j] === '\\') j++;
+    j++;
+  }
+  j = Math.min(j + 1, n);
+  return { type: ch === '`' ? 'template' : 'string', end: j, lastSignificant: ch };
+}
+
+const SPAN_MATCHERS = [tryLineComment, tryBlockComment, tryPythonComment, tryPythonTripleQuote, tryRegexLiteral, tryStringOrTemplate];
+
 // Yields { type: 'comment'|'string'|'template'|'regex'|'code', start, end }
 // spans covering the entire content. 'string' is single/double-quoted only
 // (what a secret-detector cares about); backtick templates are their own
 // 'template' type since interpolation makes their raw text unreliable.
 function tokenize(content, ext) {
-  const isPython = ext === '.py';
-  const isJsLike = !isPython;
+  const flags = { isPython: ext === '.py', isJsLike: ext !== '.py', lastSignificant: null };
   const tokens = [];
   let i = 0;
   const n = content.length;
-  let lastSignificant = null;
   let codeStart = 0;
 
   const flushCode = (end) => {
@@ -68,73 +128,20 @@ function tokenize(content, ext) {
   };
 
   while (i < n) {
-    const ch = content[i];
-    const two = content.slice(i, i + 2);
-
-    if (isJsLike && two === '//') {
+    let matched = null;
+    for (const tryMatch of SPAN_MATCHERS) {
+      matched = tryMatch(content, i, flags);
+      if (matched) break;
+    }
+    if (matched) {
       flushCode(i);
-      let j = i;
-      while (j < n && content[j] !== '\n') j++;
-      tokens.push({ type: 'comment', start: i, end: j });
-      i = j;
+      tokens.push({ type: matched.type, start: i, end: matched.end });
+      i = matched.end;
       codeStart = i;
+      if (matched.lastSignificant !== undefined) flags.lastSignificant = matched.lastSignificant;
       continue;
     }
-    if (isJsLike && two === '/*') {
-      flushCode(i);
-      let j = content.indexOf('*/', i + 2);
-      j = j === -1 ? n : j + 2;
-      tokens.push({ type: 'comment', start: i, end: j });
-      i = j;
-      codeStart = i;
-      continue;
-    }
-    if (isPython && ch === '#') {
-      flushCode(i);
-      let j = i;
-      while (j < n && content[j] !== '\n') j++;
-      tokens.push({ type: 'comment', start: i, end: j });
-      i = j;
-      codeStart = i;
-      continue;
-    }
-    const three = content.slice(i, i + 3);
-    if (isPython && (three === '"""' || three === "'''")) {
-      flushCode(i);
-      let j = content.indexOf(three, i + 3);
-      j = j === -1 ? n : j + 3;
-      tokens.push({ type: 'comment', start: i, end: j });
-      i = j;
-      codeStart = i;
-      continue;
-    }
-    if (isJsLike && ch === '/' && looksLikeRegexStart(content, i, lastSignificant)) {
-      const end = consumeRegexLiteral(content, i);
-      if (end !== null) {
-        flushCode(i);
-        tokens.push({ type: 'regex', start: i, end });
-        i = end;
-        codeStart = i;
-        lastSignificant = '/';
-        continue;
-      }
-    }
-    if (ch === '"' || ch === "'" || ch === '`') {
-      const quote = ch;
-      flushCode(i);
-      let j = i + 1;
-      while (j < n && content[j] !== quote) {
-        if (content[j] === '\\') j++;
-        j++;
-      }
-      j = Math.min(j + 1, n);
-      tokens.push({ type: quote === '`' ? 'template' : 'string', start: i, end: j });
-      i = j;
-      codeStart = i;
-      lastSignificant = quote;
-      continue;
-    }
-    if (!/\s/.test(ch)) lastSignificant = ch;
+    if (!/\s/.test(content[i])) flags.lastSignificant = content[i];
     i++;
   }
   flushCode(n);

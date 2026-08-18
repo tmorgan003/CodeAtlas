@@ -4,9 +4,9 @@
 // format the built-in checks don't know about) from the UI, applied
 // alongside the built-in checks on every future scan.
 
-const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const jsonFileStore = require('../jsonFileStore');
 
 const RULES_DIR = path.join(__dirname, '..', '..', 'data', 'mask-rules');
 const VALID_SEVERITIES = new Set(['Critical', 'High', 'Medium', 'Low']);
@@ -17,19 +17,12 @@ function rulesFile(appId) {
 }
 
 function loadRules(appId) {
-  const file = rulesFile(appId);
-  if (!fs.existsSync(file)) return [];
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const rules = jsonFileStore.load(rulesFile(appId), []);
+  return Array.isArray(rules) ? rules : [];
 }
 
 function saveRules(appId, rules) {
-  fs.mkdirSync(RULES_DIR, { recursive: true });
-  fs.writeFileSync(rulesFile(appId), JSON.stringify(rules, null, 2), 'utf8');
+  jsonFileStore.save(rulesFile(appId), rules);
 }
 
 function validatePattern(pattern) {

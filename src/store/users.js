@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const jsonFileStore = require('../jsonFileStore');
 
 const USERS_PATH = path.join(__dirname, '..', '..', 'data', 'users.json');
 
@@ -31,31 +32,24 @@ function verifyHash(password, stored) {
   return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
 }
 
-function ensure() {
-  fs.mkdirSync(path.dirname(USERS_PATH), { recursive: true });
-  if (!fs.existsSync(USERS_PATH)) {
-    // Seed one admin account so RBAC is usable out of the box. Credentials
-    // are deliberately obvious and logged loudly — this stands in for a
-    // real "set your password on first login" flow a production app would
-    // have, which is out of scope here.
-    const seeded = [{ username: 'admin', role: 'admin', passwordHash: hashPassword('admin') }];
-    fs.writeFileSync(USERS_PATH, JSON.stringify(seeded, null, 2), 'utf8');
-    console.warn('[users] Seeded default account admin/admin (role: admin) — change this via the Manage Users panel.');
-  }
+function seedIfMissing() {
+  if (fs.existsSync(USERS_PATH)) return;
+  // Seed one admin account so RBAC is usable out of the box. Credentials
+  // are deliberately obvious and logged loudly — this stands in for a
+  // real "set your password on first login" flow a production app would
+  // have, which is out of scope here.
+  const seeded = [{ username: 'admin', role: 'admin', passwordHash: hashPassword('admin') }];
+  jsonFileStore.save(USERS_PATH, seeded);
+  console.warn('[users] Seeded default account admin/admin (role: admin) — change this via the Manage Users panel.');
 }
 
 function loadAllRaw() {
-  ensure();
-  try {
-    return JSON.parse(fs.readFileSync(USERS_PATH, 'utf8'));
-  } catch {
-    return [];
-  }
+  seedIfMissing();
+  return jsonFileStore.load(USERS_PATH, []);
 }
 
 function saveAll(users) {
-  ensure();
-  fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 2), 'utf8');
+  jsonFileStore.save(USERS_PATH, users);
 }
 
 function toPublic(u) {

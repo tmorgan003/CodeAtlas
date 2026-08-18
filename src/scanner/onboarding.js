@@ -1,14 +1,22 @@
-// Feature 13: new-app onboarding checklist. Distinct from Progress.md (which
-// tracks directory-by-directory scan progress within a single run) — this
-// tracks whether a *newly registered app* has actually been set up
-// properly: owner assigned, tags added, tech stack confirmed, first scan
-// reviewed. The first two are derived live from the app record itself (no
-// storage needed — they're already true/false from app.owner/app.tags);
-// the last two require a human to actually look and say so, so they're the
-// only state persisted here.
+// Junior-developer learning path: the onboarding checklist used to track
+// admin housekeeping (owner assigned, tags added, tech stack confirmed,
+// first scan reviewed) — useful, but not a walkthrough of the product's
+// actual workflow. Reworked to walk through the four things a new user
+// genuinely needs to have done at least once to understand how CodeAtlas is
+// meant to be used: run a scan, resolve a finding, decide what blocks CI,
+// and understand what a suppression rule actually does. Two are fully
+// auto-detected from real activity (scanning, fixing); the other two are
+// auto-detected when the real signal exists (a non-default CI gate, an
+// actual suppression rule/ignore pattern) and fall back to an explicit
+// human acknowledgment otherwise — visiting a settings page isn't the same
+// as understanding it, but a real configured value or a manual check-off
+// are both honest signals, unlike a checkbox with no underlying meaning.
 
 const fs = require('fs');
 const path = require('path');
+const { loadTriage } = require('./triage');
+const suppressionRules = require('./suppressionRules');
+const customIgnore = require('./customIgnore');
 
 const ONBOARDING_DIR = path.join(__dirname, '..', '..', 'data', 'onboarding');
 
@@ -18,12 +26,12 @@ function stateFile(appId) {
 
 function loadState(appId) {
   const file = stateFile(appId);
-  if (!fs.existsSync(file)) return { techStackConfirmed: false, firstScanReviewed: false };
+  if (!fs.existsSync(file)) return { ciGateAcknowledged: false, suppressionAcknowledged: false };
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return { techStackConfirmed: !!parsed.techStackConfirmed, firstScanReviewed: !!parsed.firstScanReviewed };
+    return { ciGateAcknowledged: !!parsed.ciGateAcknowledged, suppressionAcknowledged: !!parsed.suppressionAcknowledged };
   } catch {
-    return { techStackConfirmed: false, firstScanReviewed: false };
+    return { ciGateAcknowledged: false, suppressionAcknowledged: false };
   }
 }
 
@@ -31,26 +39,55 @@ function setState(appId, patch) {
   fs.mkdirSync(ONBOARDING_DIR, { recursive: true });
   const current = loadState(appId);
   const next = {
-    techStackConfirmed: patch.techStackConfirmed !== undefined ? !!patch.techStackConfirmed : current.techStackConfirmed,
-    firstScanReviewed: patch.firstScanReviewed !== undefined ? !!patch.firstScanReviewed : current.firstScanReviewed,
+    ciGateAcknowledged: patch.ciGateAcknowledged !== undefined ? !!patch.ciGateAcknowledged : current.ciGateAcknowledged,
+    suppressionAcknowledged: patch.suppressionAcknowledged !== undefined ? !!patch.suppressionAcknowledged : current.suppressionAcknowledged,
     updatedAt: new Date().toISOString(),
   };
   fs.writeFileSync(stateFile(appId), JSON.stringify(next, null, 2), 'utf8');
   return next;
 }
 
-// Builds the full checklist for an app: two items derived live from the app
-// record (no manual action needed once the underlying field is filled in),
-// two that require an explicit human check-off even if the data looks
-// complete (a tech stack string existing doesn't mean anyone confirmed it's
-// right; a finished scan doesn't mean anyone reviewed the findings).
 function buildChecklist(app) {
   const manual = loadState(app.id);
+  const hasFixedIssue = Object.values(loadTriage(app.id)).some((t) => t.state === 'fixed');
+  const gateIsCustomized = !!app.failOnSeverity && app.failOnSeverity !== 'Critical';
+  const hasSuppressionActivity = suppressionRules.loadRules(app.id).length > 0 || customIgnore.loadPatterns(app.id).length > 0;
+
   const items = [
-    { id: 'ownerAssigned', label: 'Owner / Team assigned', done: !!(app.owner && app.owner.trim()), auto: true },
-    { id: 'tagsAdded', label: 'Tags added', done: !!(app.tags && app.tags.length), auto: true },
-    { id: 'techStackConfirmed', label: 'Tech stack confirmed', done: manual.techStackConfirmed, auto: false },
-    { id: 'firstScanReviewed', label: 'First scan reviewed', done: manual.firstScanReviewed, auto: false },
+    {
+      id: 'firstScan',
+      label: 'Run your first scan',
+      done: app.status === 'Done' && !!app.scannedAt,
+      auto: true,
+      why: "A scan is where every other step starts — there's nothing to review, fix, or gate until one finishes.",
+      cta: 'Add a path/repo above and submit the form, or click Rescan on an existing app.',
+    },
+    {
+      id: 'firstFix',
+      label: 'Fix your first issue',
+      done: hasFixedIssue,
+      auto: true,
+      why: 'Marking a finding "fixed" in Issues is how the tool learns it\'s actually resolved — it stops re-flagging the same thing on future scans once you do.',
+      cta: 'Open the Issues tab, pick any finding, and set its Triage dropdown to "fixed" once you\'ve addressed it.',
+    },
+    {
+      id: 'ciGate',
+      label: 'Set a CI gate',
+      done: gateIsCustomized || manual.ciGateAcknowledged,
+      auto: gateIsCustomized,
+      why: 'CI Gate Severity (in Scan Settings) decides what actually blocks a build — the default (Critical-only) is a safe starting point, but every team\'s risk tolerance is different.',
+      cta: 'Open Scan Settings and either change CI Gate Severity, or check this off once you\'ve confirmed the default is right for this app.',
+      manualField: 'ciGateAcknowledged',
+    },
+    {
+      id: 'suppression',
+      label: 'Understand suppression',
+      done: hasSuppressionActivity || manual.suppressionAcknowledged,
+      auto: hasSuppressionActivity,
+      why: 'A Suppression Rule silences a whole category of future findings at once, not just one — powerful, and exactly why it requires a reason and an expiration date instead of being permanent.',
+      cta: 'Open Suppression Rules and add one (or an Ignore Pattern), or check this off once you understand the difference between suppressing a rule and marking one finding "fixed".',
+      manualField: 'suppressionAcknowledged',
+    },
   ];
   const doneCount = items.filter((i) => i.done).length;
   return { items, doneCount, total: items.length, complete: doneCount === items.length };
