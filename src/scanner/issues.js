@@ -4,7 +4,7 @@
 
 const { maskStringsAndComments, extractStrings } = require('./mask');
 const { applyCustomRules } = require('./customSecretRules');
-const { resolveRelativeImport, RESOLVE_SUFFIXES } = require('./graph');
+const { resolveImport, RESOLVE_SUFFIXES } = require('./graph');
 const { scanComplexityIssues } = require('./complexity');
 const { scanMaintainabilityIssues } = require('./maintainability');
 
@@ -628,7 +628,7 @@ function findDeadCode(allFileComponents, entryPoints) {
 
   for (const fc of allFileComponents) {
     for (const imp of fc.imports || []) {
-      const resolvedBase = resolveRelativeImport(fc.relPath, imp);
+      const resolvedBase = resolveImport(fc, imp);
       if (resolvedBase === null) continue;
       for (const suffix of RESOLVE_SUFFIXES) {
         const candidate = resolvedBase + suffix;

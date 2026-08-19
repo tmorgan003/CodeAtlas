@@ -230,8 +230,28 @@ function extractPython(relPath, content) {
   while ((m = classRe.exec(content))) {
     classes.push({ name: m[1], extends: m[2] ? m[2].trim() : null, line: lineOf(content, m.index) });
   }
-  const importRe = /^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))/gm;
-  while ((m = importRe.exec(content))) imports.add(m[1] || m[2]);
+  // "from X import a, b, c" records X itself (unchanged), plus a
+  // resolvable path per imported name. Python's import machinery treats
+  // each name in a `from package import name` statement as a possible
+  // submodule (package.name), not only a symbol re-exported from
+  // package/__init__.py — without this, a submodule only ever reached this
+  // way (e.g. `from app import fetchers` pulling in app/fetchers.py) looked
+  // like nothing imported it to the dead-code check. X === '.' is written
+  // as './name' so it resolves like a same-directory sibling file; other
+  // forms are left dotted for resolvePythonAbsoluteImport (graph.js) to
+  // resolve at candidate-matching time.
+  const fromImportRe = /^\s*from\s+([\w.]+)\s+import\s+(.+)$/gm;
+  while ((m = fromImportRe.exec(content))) {
+    const base = m[1];
+    imports.add(base);
+    for (const rawName of m[2].split(',')) {
+      const name = rawName.trim().split(/\s+as\s+/)[0].trim();
+      if (!/^\w+$/.test(name)) continue;
+      imports.add(base === '.' ? `./${name}` : `${base}.${name}`);
+    }
+  }
+  const plainImportRe = /^\s*import\s+([\w.]+)/gm;
+  while ((m = plainImportRe.exec(content))) imports.add(m[1]);
 
   return { functions, classes, imports: [...imports], exports: [] };
 }

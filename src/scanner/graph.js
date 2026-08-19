@@ -27,6 +27,28 @@ function resolveRelativeImport(fromRelPath, importPath) {
 
 const RESOLVE_SUFFIXES = ['', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs', '.py', '/index.js', '/index.ts', '/__init__.py'];
 
+// Python's absolute-import form ("from app import fetchers", "import
+// app.fetchers") is project-root-relative when it names a real top-level
+// package in this repo — dots become path separators. Only meaningful for
+// Python files: callers gate this on fc.ext === '.py' so a JS bare
+// specifier like "react" (which also has no leading dot) never gets
+// mis-resolved against a same-named directory.
+function resolvePythonAbsoluteImport(dottedPath) {
+  if (dottedPath.startsWith('.')) return null;
+  return dottedPath.replace(/\./g, '/');
+}
+
+// Single resolution entry point shared by buildImportGraph and the
+// dead-code detector (issues.js) — relative first, then (Python only)
+// absolute/dotted, so both callers stay in sync automatically instead of
+// each re-implementing the same fallback.
+function resolveImport(fc, importPath) {
+  const relative = resolveRelativeImport(fc.relPath, importPath);
+  if (relative !== null) return relative;
+  if (fc.ext === '.py') return resolvePythonAbsoluteImport(importPath);
+  return null;
+}
+
 function buildImportGraph(allFileComponents) {
   const existing = new Set(allFileComponents.map((fc) => fc.relPath));
   const nodes = allFileComponents.map((fc) => ({
@@ -38,7 +60,7 @@ function buildImportGraph(allFileComponents) {
   const edges = [];
   for (const fc of allFileComponents) {
     for (const imp of fc.imports || []) {
-      const resolvedBase = resolveRelativeImport(fc.relPath, imp);
+      const resolvedBase = resolveImport(fc, imp);
       if (resolvedBase === null) continue;
       for (const suffix of RESOLVE_SUFFIXES) {
         const candidate = resolvedBase + suffix;
@@ -71,4 +93,4 @@ function loadGraph(appId) {
   }
 }
 
-module.exports = { resolveRelativeImport, RESOLVE_SUFFIXES, buildImportGraph, saveGraph, loadGraph };
+module.exports = { resolveRelativeImport, resolvePythonAbsoluteImport, resolveImport, RESOLVE_SUFFIXES, buildImportGraph, saveGraph, loadGraph };
